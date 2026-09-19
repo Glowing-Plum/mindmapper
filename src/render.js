@@ -1,5 +1,11 @@
 // SVG renderer. Nodes and edges are keyed by id and reused between renders so
 // the browser can tween them -- relayouts glide instead of jumping.
+//
+// Only the root is drawn as a card. Every other node is bare text on the
+// canvas, with an invisible rounded rect behind it for hover, selection and
+// pointer hits.
+
+import { highlightVar } from './palette.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -15,61 +21,56 @@ export function createRenderer(svg) {
   const scene = svgEl('g', { class: 'scene' });
   const edgeLayer = svgEl('g', { class: 'layer-edges' });
   const nodeLayer = svgEl('g', { class: 'layer-nodes' });
+  const labelLayer = svgEl('g', { class: 'layer-labels' });
   const overlayLayer = svgEl('g', { class: 'layer-overlay' });
-  scene.append(edgeLayer, nodeLayer, overlayLayer);
+  scene.append(edgeLayer, nodeLayer, labelLayer, overlayLayer);
   svg.append(scene);
 
   const nodeEls = new Map();
   const edgeEls = new Map();
+  const labelEls = new Map();
   let lastLayout = null;
 
   function renderNode(box, state) {
     let entry = nodeEls.get(box.id);
     if (!entry) {
       const group = svgEl('g', { class: 'node', 'data-id': box.id });
-      const ring = svgEl('rect', { class: 'node-ring' });
-      const base = svgEl('rect', { class: 'node-base' });
-      const tint = svgEl('rect', { class: 'node-tint' });
-      const accent = svgEl('rect', { class: 'node-accent' });
+      const hit = svgEl('rect', { class: 'node-hit' });
+      const card = svgEl('rect', { class: 'node-card' });
+      const highlight = svgEl('rect', { class: 'node-highlight' });
       const text = svgEl('text', { class: 'node-text' });
       const badge = svgEl('g', { class: 'node-badge' });
-      const badgeCircle = svgEl('circle', { class: 'node-badge-circle', r: 10 });
+      const badgeCircle = svgEl('circle', { class: 'node-badge-circle', r: 9 });
       const badgeText = svgEl('text', { class: 'node-badge-text' });
       badge.append(badgeCircle, badgeText);
-      group.append(ring, base, tint, accent, text, badge);
+      group.append(card, hit, highlight, text, badge);
       nodeLayer.append(group);
-      entry = { group, ring, base, tint, accent, text, badge, badgeCircle, badgeText };
+      entry = { group, hit, card, highlight, text, badge, badgeText };
       nodeEls.set(box.id, entry);
-      // New nodes pop in rather than sliding from the origin.
       group.classList.add('is-entering');
       requestAnimationFrame(() => group.classList.remove('is-entering'));
     }
 
-    const { group, ring, base, tint, accent, text, badge, badgeText } = entry;
+    const { group, hit, card, highlight, text, badge, badgeText } = entry;
     group.setAttribute('transform', `translate(${box.x}, ${box.y})`);
-    group.setAttribute('data-depth', Math.min(box.depth, 2));
-    group.classList.toggle('is-root', Boolean(box.isRoot));
+    group.setAttribute('data-depth', Math.min(box.depth, 1));
+    group.classList.toggle('is-root', box.isRoot);
     group.classList.toggle('is-selected', state.selectedId === box.id);
     group.classList.toggle('is-editing', state.editingId === box.id);
     group.classList.toggle('is-drop-target', state.dropTargetId === box.id);
     group.classList.toggle('is-dragging', state.draggingId === box.id);
     group.classList.toggle('is-collapsed', box.collapsed);
 
-    const radius = box.style.radius;
-    setRect(ring, -4, -4, box.w + 8, box.h + 8, radius + 4);
-    setRect(base, 0, 0, box.w, box.h, radius);
-    setRect(tint, 0, 0, box.w, box.h, radius);
-    const hasAccent = !box.isRoot && box.depth >= 2;
-    accent.style.display = hasAccent ? '' : 'none';
-    if (hasAccent) setRect(accent, box.side === -1 ? box.w - 4 : 0, 6, 4, box.h - 12, 2);
+    setRect(hit, 0, 0, box.w, box.h, box.style.radius);
+    card.style.display = box.isRoot ? '' : 'none';
+    if (box.isRoot) setRect(card, 0, 0, box.w, box.h, box.style.radius);
 
-    if (!box.isRoot) {
-      base.style.stroke = box.color;
-      tint.style.fill = box.color;
-      accent.style.fill = box.color;
-    } else {
-      base.style.stroke = '';
-      tint.style.fill = '';
+    const tint = highlightVar(box.highlight);
+    highlight.style.display = tint ? '' : 'none';
+    if (tint) {
+      const textHeight = box.lines.length * box.lineHeight;
+      setRect(highlight, box.style.padX - 5, (box.h - textHeight) / 2 - 1, box.textWidth + 10, textHeight + 2, 4);
+      highlight.style.fill = `var(${tint})`;
     }
 
     renderText(text, box);
@@ -77,69 +78,102 @@ export function createRenderer(svg) {
     const showBadge = box.node.children.length > 0;
     badge.style.display = showBadge ? '' : 'none';
     if (showBadge) {
-      const bx = box.side === -1 ? 0 : box.w;
-      badge.setAttribute('transform', `translate(${bx}, ${box.h / 2})`);
+      badge.setAttribute('transform', `translate(${box.side === -1 ? 2 : box.w - 2}, ${box.h / 2})`);
       badge.style.setProperty('--badge-color', box.color);
       badgeText.textContent = box.collapsed ? String(box.hiddenCount) : '−';
-      badgeText.setAttribute('y', box.collapsed ? 4 : 4.5);
+      badgeText.setAttribute('y', box.collapsed ? 3.5 : 4);
     }
     return entry;
   }
 
   function renderText(text, box) {
-    const key = `${box.lines.join('\u0000')}|${box.w}|${box.h}|${box.style.fontSize}`;
+    const { style } = box;
+    const key = [box.lines.join('\u0000'), box.w, box.h, style.fontSize, style.fontWeight, style.italic].join('|');
     if (text.dataset.key === key) return;
     text.dataset.key = key;
-    text.style.fontSize = `${box.style.fontSize}px`;
-    text.style.fontWeight = String(box.style.fontWeight);
+    text.style.fontSize = `${style.fontSize}px`;
+    text.style.fontWeight = String(style.fontWeight);
+    text.style.fontStyle = style.italic ? 'italic' : 'normal';
     text.textContent = '';
     const top = (box.h - box.lines.length * box.lineHeight) / 2;
-    const x = box.style.padX + (box.depth >= 2 && box.side === 1 ? 6 : 0);
     box.lines.forEach((line, index) => {
       const tspan = svgEl('tspan', {
-        x,
-        y: Math.round(top + index * box.lineHeight + box.lineHeight * 0.74),
+        x: style.padX,
+        y: Math.round(top + index * box.lineHeight + box.lineHeight * 0.76),
       });
       tspan.textContent = line;
       text.append(tspan);
     });
   }
 
-  function renderEdge(edge) {
-    let path = edgeEls.get(edge.id);
-    if (!path) {
-      path = svgEl('path', { class: 'edge', 'data-id': edge.id, fill: 'none' });
-      edgeLayer.append(path);
-      edgeEls.set(edge.id, path);
+  function renderEdge(edge, state) {
+    let entry = edgeEls.get(edge.id);
+    if (!entry) {
+      const group = svgEl('g', { class: 'edge-group', 'data-id': edge.id });
+      const hit = svgEl('path', { class: 'edge-hit', fill: 'none' });
+      const path = svgEl('path', { class: 'edge', fill: 'none' });
+      group.append(path, hit);
+      edgeLayer.append(group);
+      entry = { group, path, hit };
+      edgeEls.set(edge.id, entry);
     }
-    path.setAttribute('d', edge.path);
-    path.style.stroke = edge.color;
-    path.style.strokeWidth = edge.width;
-    return path;
+    entry.path.setAttribute('d', edge.path);
+    entry.hit.setAttribute('d', edge.path);
+    entry.path.style.stroke = edge.color;
+    entry.path.style.strokeWidth = edge.width;
+    entry.group.classList.toggle('is-labelling', state.labellingEdgeId === edge.id);
+    return entry;
+  }
+
+  function renderLabel(edge, state) {
+    if (!edge.label) return null;
+    let entry = labelEls.get(edge.id);
+    if (!entry) {
+      const group = svgEl('g', { class: 'edge-label', 'data-id': edge.id });
+      const bg = svgEl('rect', { class: 'edge-label-bg' });
+      const text = svgEl('text', { class: 'edge-label-text' });
+      group.append(bg, text);
+      labelLayer.append(group);
+      entry = { group, bg, text };
+      labelEls.set(edge.id, entry);
+    }
+    const { group, bg, text } = entry;
+    group.setAttribute('transform', `translate(${edge.label.x}, ${edge.label.y})`);
+    group.classList.toggle('is-editing', state.editingLabelId === edge.id);
+    setRect(bg, -edge.label.w / 2, -edge.label.h / 2, edge.label.w, edge.label.h, 5);
+    if (text.dataset.key !== edge.label.text) {
+      text.dataset.key = edge.label.text;
+      text.textContent = edge.label.text;
+    }
+    text.setAttribute('y', 4);
+    return entry;
   }
 
   function render(layout, state = {}) {
     lastLayout = layout;
-    const seenNodes = new Set();
-    const seenEdges = new Set();
+    const seen = { nodes: new Set(), edges: new Set(), labels: new Set() };
     for (const box of layout.nodes) {
       renderNode(box, state);
-      seenNodes.add(box.id);
+      seen.nodes.add(box.id);
     }
     for (const edge of layout.edges) {
-      renderEdge(edge);
-      seenEdges.add(edge.id);
-    }
-    for (const [id, entry] of nodeEls) {
-      if (!seenNodes.has(id)) {
-        entry.group.remove();
-        nodeEls.delete(id);
+      renderEdge(edge, state);
+      seen.edges.add(edge.id);
+      if (edge.label) {
+        renderLabel(edge, state);
+        seen.labels.add(edge.id);
       }
     }
-    for (const [id, path] of edgeEls) {
-      if (!seenEdges.has(id)) {
-        path.remove();
-        edgeEls.delete(id);
+    prune(nodeEls, seen.nodes, (entry) => entry.group);
+    prune(edgeEls, seen.edges, (entry) => entry.group);
+    prune(labelEls, seen.labels, (entry) => entry.group);
+  }
+
+  function prune(store, seen, elementOf) {
+    for (const [id, entry] of store) {
+      if (!seen.has(id)) {
+        elementOf(entry).remove();
+        store.delete(id);
       }
     }
   }
@@ -147,15 +181,16 @@ export function createRenderer(svg) {
   function setDropIndicator(box) {
     overlayLayer.textContent = '';
     if (!box) return;
-    const marker = svgEl('rect', {
-      class: 'drop-indicator',
-      x: box.x - 6,
-      y: box.y - 6,
-      width: box.w + 12,
-      height: box.h + 12,
-      rx: box.style.radius + 6,
-    });
-    overlayLayer.append(marker);
+    overlayLayer.append(
+      svgEl('rect', {
+        class: 'drop-indicator',
+        x: box.x - 5,
+        y: box.y - 4,
+        width: box.w + 10,
+        height: box.h + 8,
+        rx: box.style.radius + 4,
+      }),
+    );
   }
 
   return {

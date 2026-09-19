@@ -1,9 +1,15 @@
-// Inline node editing: a textarea floated exactly over the node being edited,
-// styled to match, so typing feels like editing the node itself.
+// Inline editing: a textarea floated exactly over whatever is being edited --
+// a node's text or a label on a connector -- styled to match, so typing feels
+// like editing the thing itself.
 
 import { FONT_STACK } from './measure.js';
 
-export function createInlineEditor(host, { onCommit, onCancel, onInput } = {}) {
+/**
+ * A target describes the world-space box to edit:
+ * { id, kind: 'node' | 'label', x, y, w, h, fontSize, fontWeight, italic,
+ *   lineHeight, padX, padY, radius, align, text }
+ */
+export function createInlineEditor(host, { onCommit, onCancel, onChord } = {}) {
   const input = document.createElement('textarea');
   input.className = 'inline-editor';
   input.setAttribute('spellcheck', 'false');
@@ -12,28 +18,32 @@ export function createInlineEditor(host, { onCommit, onCancel, onInput } = {}) {
 
   let current = null;
 
-  function place(box, viewport) {
+  function place(target, viewport) {
     const k = viewport.state.k;
-    const topLeft = viewport.toScreen(box.x, box.y);
+    const topLeft = viewport.toScreen(target.x, target.y);
     const hostRect = host.getBoundingClientRect();
-    input.style.left = `${topLeft.x - hostRect.left}px`;
-    input.style.top = `${topLeft.y - hostRect.top}px`;
-    input.style.width = `${box.w * k}px`;
-    input.style.height = `${box.h * k}px`;
-    input.style.fontSize = `${box.style.fontSize * k}px`;
-    input.style.lineHeight = `${box.lineHeight * k}px`;
-    input.style.fontWeight = String(box.style.fontWeight);
-    input.style.fontFamily = FONT_STACK;
-    input.style.padding = `${(box.h - box.lines.length * box.lineHeight) / 2 * k}px ${box.style.padX * k}px`;
-    input.style.borderRadius = `${box.style.radius * k}px`;
-    input.style.textAlign = box.isRoot ? 'center' : 'left';
+    Object.assign(input.style, {
+      left: `${topLeft.x - hostRect.left}px`,
+      top: `${topLeft.y - hostRect.top}px`,
+      width: `${target.w * k}px`,
+      height: `${target.h * k}px`,
+      fontSize: `${target.fontSize * k}px`,
+      lineHeight: `${target.lineHeight * k}px`,
+      fontWeight: String(target.fontWeight),
+      fontStyle: target.italic ? 'italic' : 'normal',
+      fontFamily: FONT_STACK,
+      padding: `${target.padY * k}px ${target.padX * k}px`,
+      borderRadius: `${(target.radius ?? 6) * k}px`,
+      textAlign: target.align ?? 'left',
+    });
   }
 
-  function open(box, viewport, { selectAll = true } = {}) {
-    current = { id: box.id, box, viewport };
-    input.value = box.node.text;
+  function open(target, viewport, { selectAll = true } = {}) {
+    current = { target, viewport };
+    input.value = target.text ?? '';
+    input.dataset.kind = target.kind;
     input.style.display = 'block';
-    place(box, viewport);
+    place(target, viewport);
     input.focus();
     if (selectAll) input.select();
     else input.setSelectionRange(input.value.length, input.value.length);
@@ -41,18 +51,25 @@ export function createInlineEditor(host, { onCommit, onCancel, onInput } = {}) {
 
   function close({ commit = true } = {}) {
     if (!current) return null;
-    const { id } = current;
+    const { target } = current;
     const value = input.value.trim();
     current = null;
     input.style.display = 'none';
     input.blur();
-    if (commit) onCommit?.(id, value);
-    else onCancel?.(id);
-    return id;
+    if (commit) onCommit?.(target, value);
+    else onCancel?.(target);
+    return target;
   }
 
   input.addEventListener('keydown', (event) => {
-    event.stopPropagation(); // the canvas shortcuts must not fire while typing
+    event.stopPropagation(); // canvas shortcuts must not fire while typing
+    const mod = event.ctrlKey || event.metaKey;
+    if (mod && ['b', 'i', 'h'].includes(event.key.toLowerCase())) {
+      // Formatting shortcuts still apply to the node being edited.
+      event.preventDefault();
+      onChord?.(event.key.toLowerCase(), current?.target ?? null);
+      return;
+    }
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       close({ commit: true });
@@ -61,20 +78,19 @@ export function createInlineEditor(host, { onCommit, onCancel, onInput } = {}) {
       close({ commit: false });
     } else if (event.key === 'Tab') {
       event.preventDefault();
-      const id = close({ commit: true });
-      if (id) onInput?.('tab', id);
+      const target = close({ commit: true });
+      if (target) onChord?.('tab', target);
     }
   });
 
   input.addEventListener('blur', () => close({ commit: true }));
-  input.addEventListener('input', () => onInput?.('typing', current?.id, input.value));
 
   return {
     open,
     close,
-    reposition: () => current && place(current.box, current.viewport),
+    reposition: () => current && place(current.target, current.viewport),
     isOpen: () => current !== null,
-    editingId: () => current?.id ?? null,
+    editing: () => current?.target ?? null,
     element: input,
   };
 }

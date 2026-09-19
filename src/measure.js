@@ -5,16 +5,30 @@
 export const FONT_STACK =
   'Inter, "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif';
 
-// Per-depth typography. Depth 0 is the root, 1 the main branches, 2+ the rest.
+// Per-depth typography. Depth 0 is the root -- the one node drawn as a card.
+// Everything below it is bare text, so its padding is really just the gap
+// between the connector and the first letter, plus a comfortable hit area.
 export const NODE_STYLES = [
-  { fontSize: 17, fontWeight: 600, maxWidth: 260, padX: 18, padY: 12, minHeight: 44, radius: 14 },
-  { fontSize: 15, fontWeight: 600, maxWidth: 230, padX: 15, padY: 10, minHeight: 38, radius: 11 },
-  { fontSize: 14, fontWeight: 500, maxWidth: 210, padX: 13, padY: 9, minHeight: 34, radius: 9 },
+  { fontSize: 19, fontWeight: 600, maxWidth: 280, padX: 20, padY: 13, minHeight: 46, radius: 12 },
+  { fontSize: 14.5, fontWeight: 500, maxWidth: 260, padX: 11, padY: 7, minHeight: 28, radius: 6 },
 ];
 
 export function styleForDepth(depth) {
   return NODE_STYLES[Math.min(depth, NODE_STYLES.length - 1)];
 }
+
+/** Folds a node's own formatting into its depth style. */
+export function styleForNode(node, depth) {
+  const base = styleForDepth(depth);
+  if (!node?.bold && !node?.italic) return base;
+  return {
+    ...base,
+    fontWeight: node.bold ? 700 : base.fontWeight,
+    italic: Boolean(node.italic),
+  };
+}
+
+export const EDGE_LABEL_STYLE = { fontSize: 12, fontWeight: 500, maxWidth: 190, padX: 6, padY: 3 };
 
 export function lineHeightFor(style) {
   return Math.round(style.fontSize * 1.35);
@@ -52,13 +66,13 @@ export function createMeasurer() {
   const cache = new Map();
 
   return function measure(text, style) {
-    const key = `${style.fontSize}|${style.fontWeight}|${style.maxWidth}|${text}`;
+    const key = `${style.fontSize}|${style.fontWeight}|${style.italic ? 'i' : ''}|${style.maxWidth}|${text}`;
     const hit = cache.get(key);
     if (hit) return hit;
 
     const widthOf = (s) => {
       if (!ctx) return estimateWidth(s, style.fontSize, style.fontWeight);
-      ctx.font = `${style.fontWeight} ${style.fontSize}px ${FONT_STACK}`;
+      ctx.font = `${style.italic ? 'italic ' : ''}${style.fontWeight} ${style.fontSize}px ${FONT_STACK}`;
       return ctx.measureText(s).width;
     };
 

@@ -53,6 +53,7 @@
             <button type="button" role="menuitem" data-export="copy">Copy outline</button>
           </div>
         </div>
+        <button type="button" class="btn" id="btn-history" title="Version history">History</button>
         <button type="button" class="btn icon" id="btn-theme" title="Toggle dark mode" aria-label="Toggle dark mode">&#9681;</button>
         <button type="button" class="btn icon" id="btn-help" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
       </div>
@@ -82,6 +83,9 @@
             <dt>Arrows</dt><dd>Move selection</dd>
             <dt>Alt + &uarr; / &darr;</dt><dd>Reorder</dd>
             <dt>Alt + &larr; / &rarr;</dt><dd>Outdent / indent</dd>
+            <dt>Ctrl + B / I</dt><dd>Bold / italic</dd>
+            <dt>Ctrl + H</dt><dd>Cycle highlight</dd>
+            <dt>Ctrl + L</dt><dd>Label the incoming line</dd>
             <dt>Space</dt><dd>Collapse or expand</dd>
             <dt>Delete</dt><dd>Delete node</dd>
             <dt>Ctrl + scroll</dt><dd>Zoom</dd>
@@ -95,10 +99,15 @@
         <svg id="canvas" role="application" aria-label="Mind map canvas" tabindex="0"></svg>
 
         <div class="node-toolbar" id="node-toolbar" hidden>
+          <button type="button" class="tool fmt" data-act="bold" title="Bold (Ctrl+B)" aria-label="Bold"><b>B</b></button>
+          <button type="button" class="tool fmt" data-act="italic" title="Italic (Ctrl+I)" aria-label="Italic"><i>I</i></button>
+          <div class="swatches highlights" id="highlights" role="group" aria-label="Text highlight"></div>
+          <span class="divider"></span>
           <div class="swatches" id="swatches" role="group" aria-label="Branch colour"></div>
           <span class="divider"></span>
           <button type="button" class="tool" data-act="child" title="Add child (Tab)">+ Child</button>
           <button type="button" class="tool" data-act="sibling" title="Add sibling (Enter)">+ Sibling</button>
+          <button type="button" class="tool" data-act="label" title="Label the line from the parent (Ctrl+L)">Label line</button>
           <button type="button" class="tool danger" data-act="delete" title="Delete (Del)" aria-label="Delete node">&#128465;</button>
         </div>
 
@@ -113,6 +122,32 @@
         <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
       </div>
     </main>
+
+    <dialog id="history-dialog" class="wide">
+      <header class="dialog-head">
+        <div>
+          <h2>Version history</h2>
+          <p class="dialog-sub">Saved automatically in this browser. Restoring is itself undoable.</p>
+        </div>
+        <form method="dialog"><button class="btn ghost" value="close" aria-label="Close">&#10005;</button></form>
+      </header>
+      <ul class="version-list" id="version-list"></ul>
+      <menu>
+        <button type="button" class="btn ghost danger" id="btn-clear-history">Clear history</button>
+        <form method="dialog"><button class="btn" value="close">Done</button></form>
+      </menu>
+    </dialog>
+
+    <dialog id="confirm-dialog">
+      <h2 id="confirm-title">Are you sure?</h2>
+      <p id="confirm-body"></p>
+      <menu>
+        <form method="dialog" class="confirm-actions">
+          <button class="btn" value="cancel">Cancel</button>
+          <button class="btn primary" value="confirm" id="confirm-ok">Continue</button>
+        </form>
+      </menu>
+    </dialog>
 
     <dialog id="help-dialog">
       <form method="dialog">
@@ -129,6 +164,13 @@
           <li><kbd>Alt</kbd> with the arrows reorders, indents and outdents.</li>
           <li>Drag a node onto another to re-parent it.</li>
           <li><kbd>Space</kbd> collapses or expands; the bubble shows how many nodes are tucked away.</li>
+          <li><kbd>Ctrl</kbd> + <kbd>B</kbd>/<kbd>I</kbd> sets bold and italic, <kbd>Ctrl</kbd> + <kbd>H</kbd> cycles the highlight.</li>
+          <li><kbd>Ctrl</kbd> + <kbd>L</kbd>, or a double-click on a line, labels that connector.</li>
+        </ul>
+        <h3>Keeping your work</h3>
+        <ul>
+          <li>Every change autosaves, and <kbd>History</kbd> keeps timestamped versions you can restore.</li>
+          <li>Replacing a map asks first, and a restore can still be undone with <kbd>Ctrl</kbd> + <kbd>Z</kbd>.</li>
         </ul>
         <h3>Getting around</h3>
         <ul>

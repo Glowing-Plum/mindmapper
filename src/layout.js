@@ -1,17 +1,18 @@
-// Tidy two-sided tree layout.
+// Tidy tree layout.
 //
-// The root sits at the origin; branches fan out left and right in per-depth
-// columns, each subtree stacked so nothing overlaps and every parent is
-// vertically centred on its children. Connectors are cubic beziers that leave
-// the parent horizontally, which is what gives the map its soft Whimsical feel.
+// Children are positioned relative to *their own parent*, not in global
+// per-depth columns: siblings share an edge with each other and with nothing
+// else, so two nodes lining up vertically always means they belong to the same
+// parent. Connectors resolve their curve immediately at the parent and then run
+// straight into the child, which is what makes the branches easy to trace.
 
-import { createMeasurer, lineHeightFor, styleForDepth } from './measure.js';
+import { EDGE_LABEL_STYLE, createMeasurer, lineHeightFor, styleForDepth, styleForNode } from './measure.js';
 import { branchColor } from './palette.js';
 
 export const DEFAULT_OPTIONS = {
   mode: 'both', // 'both' | 'right'
-  hGap: 64, // horizontal space between columns
-  vGap: 16, // vertical space between sibling boxes
+  hGap: 44, // horizontal space between a parent and its children
+  vGap: 14, // vertical space between sibling boxes
   measure: null,
 };
 
@@ -20,18 +21,20 @@ const sharedMeasurer = createMeasurer();
 /**
  * @param {object} root
  * @param {Partial<typeof DEFAULT_OPTIONS>} [options]
- * @returns {{nodes: object[], edges: object[], bounds: object, byId: Map<string, object>}}
+ * @returns {{nodes: object[], edges: object[], bounds: object, byId: Map<string, object>, root: object}}
  */
 export function computeLayout(root, options = {}) {
   const { mode, hGap, vGap, measure } = { ...DEFAULT_OPTIONS, ...options };
   const measureText = measure ?? sharedMeasurer;
 
-  // 1. Build the visible tree, measuring as we go.
-  const build = (node, depth, side, colorIndex, parentBox) => {
-    const style = styleForDepth(depth);
-    const text = node.text?.trim() ? node.text : 'Untitled';
-    const metrics = measureText(text, style);
-    const box = {
+  const makeBox = (node, depth, side, colorIndex, parentBox) => {
+    const style = depth === 0 ? styleForDepth(0) : styleForNode(node, depth);
+    const fallback = depth === 0 ? 'Central idea' : 'Untitled';
+    const metrics = measureText(node.text?.trim() ? node.text : fallback, style);
+    const label = node.edgeLabel?.trim() && parentBox
+      ? measureText(node.edgeLabel, EDGE_LABEL_STYLE)
+      : null;
+    return {
       id: node.id,
       node,
       depth,
@@ -39,17 +42,27 @@ export function computeLayout(root, options = {}) {
       style,
       lines: metrics.lines,
       lineHeight: lineHeightFor(style),
+      textWidth: metrics.width,
       w: Math.round(metrics.width + style.padX * 2),
       h: Math.round(Math.max(style.minHeight, metrics.height + style.padY * 2)),
       x: 0,
       y: 0,
       colorIndex,
       color: branchColor(colorIndex).stroke,
+      highlight: node.highlight ?? null,
       parent: parentBox,
       children: [],
-      hiddenCount: node.collapsed ? countAll(node) : 0,
+      isRoot: depth === 0,
+      label: label
+        ? { text: node.edgeLabel, w: Math.round(label.width + EDGE_LABEL_STYLE.padX * 2), h: Math.round(label.height + EDGE_LABEL_STYLE.padY * 2) }
+        : null,
       collapsed: Boolean(node.collapsed) && node.children.length > 0,
+      hiddenCount: node.collapsed ? countAll(node) : 0,
     };
+  };
+
+  const build = (node, depth, side, colorIndex, parentBox) => {
+    const box = makeBox(node, depth, side, colorIndex, parentBox);
     if (!box.collapsed) {
       for (const child of node.children) {
         const childColor = Number.isInteger(child.colorIndex) ? child.colorIndex : colorIndex;
@@ -59,31 +72,10 @@ export function computeLayout(root, options = {}) {
     return box;
   };
 
-  const rootStyle = styleForDepth(0);
-  const rootMetrics = measureText(root.text?.trim() ? root.text : 'Central idea', rootStyle);
-  const rootBox = {
-    id: root.id,
-    node: root,
-    depth: 0,
-    side: 0,
-    style: rootStyle,
-    lines: rootMetrics.lines,
-    lineHeight: lineHeightFor(rootStyle),
-    w: Math.round(rootMetrics.width + rootStyle.padX * 2),
-    h: Math.round(Math.max(rootStyle.minHeight, rootMetrics.height + rootStyle.padY * 2)),
-    x: 0,
-    y: 0,
-    colorIndex: -1,
-    color: 'var(--root-bg)',
-    parent: null,
-    children: [],
-    isRoot: true,
-    hiddenCount: root.collapsed ? countAll(root) : 0,
-    collapsed: Boolean(root.collapsed) && root.children.length > 0,
-  };
+  const rootBox = makeBox(root, 0, 0, -1, null);
+  rootBox.color = 'var(--root-bg)';
 
-  // 2. Split the top-level branches between the two sides, keeping order:
-  //    the first half goes right, the rest left (reading order, top to bottom).
+  // Split the top-level branches between the two sides, keeping reading order.
   const branches = rootBox.collapsed ? [] : root.children;
   const rightCount = mode === 'right' ? branches.length : Math.ceil(branches.length / 2);
   const sides = { right: [], left: [] };
@@ -95,47 +87,24 @@ export function computeLayout(root, options = {}) {
     (side === 1 ? sides.right : sides.left).push(box);
   });
 
-  // 3. Vertical placement, one side at a time.
+  // Vertical placement, one side at a time, centred on the root.
   for (const group of [sides.right, sides.left]) {
     if (group.length === 0) continue;
     let cursor = 0;
     for (const box of group) {
-      const height = placeSubtree(box, cursor, vGap);
-      cursor += height + vGap;
+      cursor += placeSubtree(box, cursor, vGap) + vGap;
     }
-    const top = Math.min(...group.map(subtreeTop));
-    const bottom = Math.max(...group.map(subtreeBottom));
-    shiftSubtrees(group, -(top + bottom) / 2); // centre the side on the root
+    const top = Math.min(...group.map((box) => subtreeTop(box)));
+    const bottom = Math.max(...group.map((box) => subtreeBottom(box)));
+    shiftSubtrees(group, -(top + bottom) / 2);
   }
 
-  // 4. Horizontal placement: one column per depth per side, wide enough for
-  //    the widest node in it.
-  const columns = { 1: new Map(), '-1': new Map() };
-  for (const box of iterate(rootBox)) {
-    if (box.isRoot) continue;
-    const perSide = columns[box.side];
-    perSide.set(box.depth, Math.max(perSide.get(box.depth) ?? 0, box.w));
-  }
-  const columnStart = { 1: new Map(), '-1': new Map() };
-  for (const side of [1, -1]) {
-    let offset = rootBox.w / 2 + hGap;
-    const depths = [...columns[side].keys()].sort((a, b) => a - b);
-    for (const depth of depths) {
-      columnStart[side].set(depth, offset);
-      offset += columns[side].get(depth) + hGap;
-    }
-  }
-  for (const box of iterate(rootBox)) {
-    if (box.isRoot) {
-      box.x = -box.w / 2;
-      continue;
-    }
-    const start = columnStart[box.side].get(box.depth) ?? 0;
-    box.x = box.side === 1 ? start : -start - box.w;
-  }
+  // Horizontal placement: every child hangs off its own parent.
+  rootBox.x = -rootBox.w / 2;
   rootBox.y = -rootBox.h / 2;
+  assignX(rootBox, hGap);
 
-  // 5. Flatten to render data.
+  // Flatten to render data.
   const nodes = [];
   const edges = [];
   const byId = new Map();
@@ -144,20 +113,58 @@ export function computeLayout(root, options = {}) {
     box.cy = box.y + box.h / 2;
     nodes.push(box);
     byId.set(box.id, box);
-    if (box.parent) {
-      edges.push({
-        id: `${box.parent.id}->${box.id}`,
-        from: box.parent,
-        to: box,
-        color: box.color,
-        width: Math.max(1.5, 3.5 - box.depth * 0.6),
-        path: connector(box.parent, box),
-      });
-    }
+    if (box.parent) edges.push(buildEdge(box.parent, box));
   }
 
-  const bounds = computeBounds(nodes);
-  return { nodes, edges, bounds, byId, root: rootBox };
+  return { nodes, edges, bounds: computeBounds(nodes, edges), byId, root: rootBox };
+}
+
+/**
+ * Places a parent's children in one column of their own. The column is pushed
+ * out far enough for the widest label on any of the lines feeding into it, so
+ * a labelled line never runs short of room.
+ */
+function assignX(box, hGap) {
+  if (box.children.length === 0) return;
+  const labelRoom = Math.max(0, ...box.children.map((child) => (child.label ? child.label.w + 26 : 0)));
+  const gap = Math.max(hGap, labelRoom);
+  for (const child of box.children) {
+    child.x = child.side === 1 ? box.x + box.w + gap : box.x - gap - child.w;
+    assignX(child, hGap);
+  }
+}
+
+function buildEdge(parent, child) {
+  const side = child.side === -1 ? -1 : 1;
+  const px = side === 1 ? parent.x + parent.w : parent.x;
+  const py = parent.y + parent.h / 2;
+  const cx = side === 1 ? child.x : child.x + child.w;
+  const cy = child.y + child.h / 2;
+  const span = Math.abs(cx - px);
+  const straight = Math.abs(cy - py) < 0.5;
+
+  // Control points sit close to the parent so the bend happens there and the
+  // rest of the run is a straight horizontal line into the child.
+  const lead = Math.min(20, span * 0.3);
+  const settle = Math.min(48, span * 0.7);
+  const path = straight
+    ? `M ${round(px)} ${round(py)} L ${round(cx)} ${round(cy)}`
+    : `M ${round(px)} ${round(py)} C ${round(px + lead * side)} ${round(py)}, ${round(px + settle * side)} ${round(cy)}, ${round(cx)} ${round(cy)}`;
+
+  // Labels ride the straight portion of the line. Every edge carries an
+  // anchor, so an unlabelled line still knows where a new label would go.
+  const labelX = straight ? (px + cx) / 2 : (px + settle * side + cx) / 2;
+  const labelAnchor = { x: labelX, y: cy };
+  return {
+    id: `${parent.id}->${child.id}`,
+    from: parent,
+    to: child,
+    color: child.color,
+    width: child.depth <= 1 ? 2.2 : 1.8,
+    path,
+    labelAnchor,
+    label: child.label ? { ...child.label, ...labelAnchor, color: child.color } : null,
+  };
 }
 
 function countAll(node) {
@@ -171,8 +178,7 @@ function* iterate(box) {
 
 /**
  * Stacks a subtree starting at `top` and returns the height it occupies,
- * positioning `box` centred on its children (and nudging the subtree down if
- * the parent box is taller than the children block).
+ * centring `box` on its children.
  */
 function placeSubtree(box, top, vGap) {
   if (box.children.length === 0) {
@@ -217,37 +223,25 @@ function shiftSubtrees(boxes, dy) {
   }
 }
 
-/** Cubic bezier that leaves the parent horizontally and arrives the same way. */
-export function connector(parent, child) {
-  const side = child.side === -1 ? -1 : 1;
-  const px = side === 1 ? parent.x + parent.w : parent.x;
-  const py = parent.y + parent.h / 2;
-  const cx = side === 1 ? child.x : child.x + child.w;
-  const cy = child.y + child.h / 2;
-  const bend = Math.max(24, Math.abs(cx - px) * 0.5);
-  return `M ${round(px)} ${round(py)} C ${round(px + bend * side)} ${round(py)}, ${round(cx - bend * side)} ${round(cy)}, ${round(cx)} ${round(cy)}`;
-}
-
 function round(value) {
   return Math.round(value * 10) / 10;
 }
 
-export function computeBounds(nodes, padding = 80) {
+export function computeBounds(nodes, edges = [], padding = 90) {
   if (nodes.length === 0) return { x: 0, y: 0, width: 1, height: 1 };
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const box of nodes) {
-    minX = Math.min(minX, box.x);
-    minY = Math.min(minY, box.y);
-    maxX = Math.max(maxX, box.x + box.w);
-    maxY = Math.max(maxY, box.y + box.h);
-  }
-  return {
-    x: minX - padding,
-    y: minY - padding,
-    width: maxX - minX + padding * 2,
-    height: maxY - minY + padding * 2,
+  const include = (x, y, w, h) => {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + w);
+    maxY = Math.max(maxY, y + h);
   };
+  for (const box of nodes) include(box.x, box.y, box.w, box.h);
+  for (const edge of edges) {
+    if (edge.label) include(edge.label.x - edge.label.w / 2, edge.label.y - edge.label.h / 2, edge.label.w, edge.label.h);
+  }
+  return { x: minX - padding, y: minY - padding, width: maxX - minX + padding * 2, height: maxY - minY + padding * 2 };
 }
