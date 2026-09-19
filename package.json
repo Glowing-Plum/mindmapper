@@ -1,0 +1,13 @@
+{
+  "name": "mindmapper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A Whimsical-style mindmap generator: turn an outline into a beautiful, editable mind map.",
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:browser": "node test/browser.smoke.mjs"
+  },
+  "license": "MIT"
+}
