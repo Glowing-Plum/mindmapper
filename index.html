@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>Mindmapper — outline to mind map</title>
+    <meta name="description" content="Turn an outline into a clean, editable mind map. Keyboard-driven, exports to SVG, PNG, Markdown and JSON." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='9' cy='16' r='5' fill='%236366f1'/%3E%3Ccircle cx='24' cy='8' r='4' fill='%2310b981'/%3E%3Ccircle cx='24' cy='24' r='4' fill='%23f59e0b'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <svg viewBox="0 0 32 32" aria-hidden="true" class="brand-mark">
+          <path d="M12 16h6M18 16l4-7M18 16l4 7" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" />
+          <circle cx="9" cy="16" r="5" fill="currentColor" />
+          <circle cx="24" cy="9" r="3.5" fill="#10b981" />
+          <circle cx="24" cy="23" r="3.5" fill="#f59e0b" />
+        </svg>
+        <span>Mindmapper</span>
+      </div>
+
+      <div class="topbar-group">
+        <label class="field">
+          <span class="field-label">Start from</span>
+          <select id="sample-select" aria-label="Load a sample map"></select>
+        </label>
+        <button type="button" class="btn" id="btn-new">New map</button>
+      </div>
+
+      <div class="topbar-group">
+        <button type="button" class="btn icon" id="btn-undo" title="Undo (Ctrl+Z)" aria-label="Undo">&#8630;</button>
+        <button type="button" class="btn icon" id="btn-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">&#8631;</button>
+      </div>
+
+      <div class="topbar-group">
+        <div class="segmented" role="group" aria-label="Layout">
+          <button type="button" class="seg" id="mode-both" data-mode="both" aria-pressed="true">Balanced</button>
+          <button type="button" class="seg" id="mode-right" data-mode="right" aria-pressed="false">One side</button>
+        </div>
+        <button type="button" class="btn" id="btn-collapse">Collapse all</button>
+        <button type="button" class="btn" id="btn-expand">Expand all</button>
+      </div>
+
+      <div class="topbar-group right">
+        <div class="menu" id="export-menu">
+          <button type="button" class="btn primary" id="btn-export" aria-haspopup="true" aria-expanded="false">Export</button>
+          <div class="menu-list" role="menu" hidden>
+            <button type="button" role="menuitem" data-export="png">PNG image</button>
+            <button type="button" role="menuitem" data-export="svg">SVG vector</button>
+            <button type="button" role="menuitem" data-export="md">Markdown outline</button>
+            <button type="button" role="menuitem" data-export="json">JSON</button>
+            <button type="button" role="menuitem" data-export="copy">Copy outline</button>
+          </div>
+        </div>
+        <button type="button" class="btn icon" id="btn-theme" title="Toggle dark mode" aria-label="Toggle dark mode">&#9681;</button>
+        <button type="button" class="btn icon" id="btn-help" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-head">
+          <h2>Outline</h2>
+          <button type="button" class="btn ghost small" id="btn-toggle-sidebar" aria-label="Hide outline panel">Hide</button>
+        </div>
+        <p class="hint">
+          Type or paste an outline — markdown headings, bullets or plain indentation all work.
+          Editing the map keeps this in sync.
+        </p>
+        <textarea id="outline" spellcheck="false" aria-label="Outline source"></textarea>
+        <div class="sidebar-actions">
+          <button type="button" class="btn primary" id="btn-generate">Generate map</button>
+          <span class="sidebar-status" id="outline-status" role="status"></span>
+        </div>
+        <details class="shortcuts">
+          <summary>Keyboard shortcuts</summary>
+          <dl>
+            <dt>Tab</dt><dd>Add child</dd>
+            <dt>Enter</dt><dd>Add sibling</dd>
+            <dt>F2 / double-click</dt><dd>Edit text</dd>
+            <dt>Arrows</dt><dd>Move selection</dd>
+            <dt>Alt + &uarr; / &darr;</dt><dd>Reorder</dd>
+            <dt>Alt + &larr; / &rarr;</dt><dd>Outdent / indent</dd>
+            <dt>Space</dt><dd>Collapse or expand</dd>
+            <dt>Delete</dt><dd>Delete node</dd>
+            <dt>Ctrl + scroll</dt><dd>Zoom</dd>
+            <dt>Scroll / drag</dt><dd>Pan</dd>
+            <dt>Shift + F</dt><dd>Fit to screen</dd>
+          </dl>
+        </details>
+      </aside>
+
+      <div class="canvas-wrap" id="canvas-wrap">
+        <svg id="canvas" role="application" aria-label="Mind map canvas" tabindex="0"></svg>
+
+        <div class="node-toolbar" id="node-toolbar" hidden>
+          <div class="swatches" id="swatches" role="group" aria-label="Branch colour"></div>
+          <span class="divider"></span>
+          <button type="button" class="tool" data-act="child" title="Add child (Tab)">+ Child</button>
+          <button type="button" class="tool" data-act="sibling" title="Add sibling (Enter)">+ Sibling</button>
+          <button type="button" class="tool danger" data-act="delete" title="Delete (Del)" aria-label="Delete node">&#128465;</button>
+        </div>
+
+        <div class="zoom-controls">
+          <button type="button" class="btn icon" id="btn-zoom-out" aria-label="Zoom out">&minus;</button>
+          <button type="button" class="btn zoom-level" id="btn-zoom-reset" aria-label="Reset zoom to 100%">100%</button>
+          <button type="button" class="btn icon" id="btn-zoom-in" aria-label="Zoom in">+</button>
+          <button type="button" class="btn icon" id="btn-fit" title="Fit to screen (Shift+F)" aria-label="Fit to screen">&#9974;</button>
+        </div>
+
+        <button type="button" class="sidebar-reveal" id="btn-show-sidebar" hidden>Outline</button>
+        <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+      </div>
+    </main>
+
+    <dialog id="help-dialog">
+      <form method="dialog">
+        <h2>Mindmapper</h2>
+        <p>
+          Write an outline on the left and press <kbd>Generate map</kbd>, or build the map directly on
+          the canvas. Everything autosaves to this browser.
+        </p>
+        <h3>On the canvas</h3>
+        <ul>
+          <li><kbd>Tab</kbd> adds a child, <kbd>Enter</kbd> adds a sibling — both drop straight into editing.</li>
+          <li><kbd>F2</kbd> or a double-click edits a node; <kbd>Esc</kbd> cancels.</li>
+          <li>Arrow keys move the selection along the branches.</li>
+          <li><kbd>Alt</kbd> with the arrows reorders, indents and outdents.</li>
+          <li>Drag a node onto another to re-parent it.</li>
+          <li><kbd>Space</kbd> collapses or expands; the bubble shows how many nodes are tucked away.</li>
+        </ul>
+        <h3>Getting around</h3>
+        <ul>
+          <li>Scroll or drag empty space to pan, <kbd>Ctrl</kbd>/<kbd>&#8984;</kbd> + scroll or pinch to zoom.</li>
+          <li><kbd>Shift</kbd> + <kbd>F</kbd> fits the whole map on screen.</li>
+        </ul>
+        <menu><button class="btn primary" value="close">Got it</button></menu>
+      </form>
+    </dialog>
+
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>
