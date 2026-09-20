@@ -21,11 +21,14 @@
       </div>
 
       <div class="topbar-group">
-        <label class="field">
-          <span class="field-label">Start from</span>
-          <select id="sample-select" aria-label="Load a sample map"></select>
-        </label>
+        <select id="sample-select" aria-label="Load a sample map"></select>
         <button type="button" class="btn" id="btn-new">New map</button>
+        <button type="button" class="btn" id="btn-open" title="Open a map from a file (Ctrl+O)">Open…</button>
+        <button type="button" class="btn" id="btn-save" title="Save to file (Ctrl+S)">Save</button>
+      </div>
+
+      <div class="topbar-group file-state">
+        <span class="file-name" id="file-name" title="The file this map is saved to">Not saved to a file</span>
       </div>
 
       <div class="topbar-group">
@@ -38,8 +41,8 @@
           <button type="button" class="seg" id="mode-both" data-mode="both" aria-pressed="true">Balanced</button>
           <button type="button" class="seg" id="mode-right" data-mode="right" aria-pressed="false">One side</button>
         </div>
-        <button type="button" class="btn" id="btn-collapse">Collapse all</button>
-        <button type="button" class="btn" id="btn-expand">Expand all</button>
+        <button type="button" class="btn" id="btn-collapse" title="Collapse every branch">Collapse</button>
+        <button type="button" class="btn" id="btn-expand" title="Expand every branch">Expand</button>
       </div>
 
       <div class="topbar-group right">
@@ -90,6 +93,8 @@
             <dt>Delete</dt><dd>Delete node</dd>
             <dt>Ctrl + scroll</dt><dd>Zoom</dd>
             <dt>Scroll / drag</dt><dd>Pan</dd>
+            <dt>Ctrl + O</dt><dd>Open a file</dd>
+            <dt>Ctrl + S</dt><dd>Save to file</dd>
             <dt>Shift + F</dt><dd>Fit to screen</dd>
           </dl>
         </details>
@@ -169,6 +174,8 @@
         </ul>
         <h3>Keeping your work</h3>
         <ul>
+          <li><kbd>Ctrl</kbd> + <kbd>O</kbd> opens a <code>.json</code> or <code>.md</code> file, and dragging a file onto the canvas does the same.</li>
+          <li><kbd>Ctrl</kbd> + <kbd>S</kbd> saves back to that file; <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> saves a copy elsewhere. JSON keeps formatting, colours and line labels; Markdown keeps the text.</li>
           <li>Every change autosaves, and <kbd>History</kbd> keeps timestamped versions you can restore.</li>
           <li>Replacing a map asks first, and a restore can still be undone with <kbd>Ctrl</kbd> + <kbd>Z</kbd>.</li>
         </ul>

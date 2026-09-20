@@ -8,12 +8,35 @@ modules, SVG and CSS.
 
 ```bash
 npm start          # serves the app at http://localhost:4173
-npm test           # unit tests for the parser, model and layout engine
+npm test           # unit tests for the parser, model, layout engine and files
 npm run test:browser   # optional end-to-end pass (needs playwright)
 ```
 
-ES modules need a real origin, so open the served URL rather than the file
-itself.
+On macOS you can double-click **`start.command`** instead: it starts the server
+and opens your browser. The first time, macOS may block it — right-click the
+file, choose **Open**, then **Open** again. Leave the Terminal window open while
+you work, and close it (or press <kbd>Ctrl</kbd> + <kbd>C</kbd>) to stop.
+
+There is nothing to install: no dependencies, no build step. ES modules need a
+real origin, so open the served URL rather than the file itself.
+
+## Your maps are files
+
+Use <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>O</kbd> (or **Open…**) to open a map,
+and <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd> to save it. You can also drag a
+file onto the canvas to open it. The top bar shows the current file, with a dot
+when there are unsaved changes.
+
+- **`.json`** is the full format: text, formatting, highlights, branch colours,
+  collapse state and line labels. Use it for maps you will come back to.
+- **`.md`** is a plain outline — portable, but it carries the text only.
+
+In Chrome and Edge, saving writes back to the file you opened, so it behaves
+like any desktop app. Firefox and Safari have no such API, so there the button
+reads **Save a copy** and each save downloads a fresh file.
+
+Keeping maps as files means they live wherever you put them — a synced folder,
+a backup, version control — rather than inside one browser.
 
 ## Generating a map
 
@@ -71,6 +94,8 @@ so a labelled line never runs short of space.
 
 ## Keeping your work
 
+- **Files first.** Save to `.json` and your map is a real file you control. The
+  app warns before discarding unsaved changes to a file.
 - **Autosave.** Every change is written to `localStorage`, along with your theme
   and layout choice, and restored on the next visit.
 - **Version history.** Timestamped snapshots are kept automatically (a run of
@@ -121,6 +146,7 @@ app.
 | `src/viewport.js` | Pan, zoom, pinch, fit-to-screen |
 | `src/editor.js` | The textarea floated over the node or label being edited |
 | `src/storage.js` | Autosave and the rolling version history |
+| `src/files.js` | Opening and saving real files, with a fallback for browsers without file handles |
 | `src/exporters.js` | SVG/PNG/Markdown/JSON output and downloads |
 | `src/app.js` | Interaction state and wiring |
 
@@ -130,15 +156,16 @@ invariant that no two nodes ever overlap.
 
 ## Tests
 
-`npm test` runs 64 unit tests across the parser, the document model, the layout
-engine and local storage — including the invariants that nodes never overlap,
-that siblings align only with each other, and that regenerating preserves
-formatting.
+`npm test` runs 75 unit tests across the parser, the document model, the layout
+engine, file handling and local storage — including the invariants that nodes
+never overlap, that siblings align only with each other, that regenerating
+preserves formatting, and that a `.json` file round-trips everything an outline
+cannot carry.
 
 `npm run test:browser` boots the app in Chromium and exercises editing,
-dragging, formatting, line labels, collapsing, undo, version history, autosave
-and export (26 checks). It skips itself cleanly when Playwright is not
-installed.
+dragging, formatting, line labels, collapsing, undo, version history, opening
+and saving files, drag-and-drop, autosave and export (43 checks). It skips
+itself cleanly when Playwright is not installed.
 
 ## Browser support
 

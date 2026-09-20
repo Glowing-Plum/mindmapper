@@ -218,6 +218,89 @@ try {
   await page.waitForTimeout(400);
   check('loading a sample is undoable', (await nodeCount()) === beforeSample);
 
+  // ---- files -------------------------------------------------------------
+  // The File System Access API opens a native dialog no test can drive, so the
+  // pickers are stubbed. Everything below them is the app's real code path.
+  await page.evaluate(() => {
+    window.__savedText = null;
+    const handle = {
+      name: 'from-disk.json',
+      async getFile() {
+        return new File([window.__fileContents], 'from-disk.json', { type: 'application/json' });
+      },
+      async createWritable() {
+        return {
+          async write(text) { window.__savedText = text; },
+          async close() {},
+        };
+      },
+    };
+    window.__handle = handle;
+    window.showOpenFilePicker = async () => [handle];
+    window.showSaveFilePicker = async () => handle;
+  });
+  await page.evaluate(() => {
+    window.__fileContents = JSON.stringify({
+      version: 1,
+      root: {
+        text: 'Opened from a file',
+        children: [{ text: 'Styled', bold: true, highlight: 'yellow', edgeLabel: 'via', children: [] }],
+      },
+    });
+  });
+
+  await page.click('#btn-open');
+  await page.waitForTimeout(500);
+  check('opening a file loads the map', (await outline()).includes('Opened from a file'));
+  check('the file name is shown', (await page.textContent('#file-name')) === 'from-disk.json');
+  check('a freshly opened file is not dirty',
+    !(await page.evaluate(() => document.getElementById('file-name').classList.contains('is-dirty'))));
+  check('json keeps formatting the outline cannot carry', await page.evaluate(() => {
+    const node = [...window.mindmapper.doc.nodes.values()].find((n) => n.text === 'Styled');
+    return node?.bold === true && node?.highlight === 'yellow' && node?.edgeLabel === 'via';
+  }));
+
+  // Editing marks it unsaved; Ctrl+S writes back to the same file.
+  await clickNode('Styled');
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(150);
+  await page.keyboard.type('Added offline');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(350);
+  check('editing marks the file unsaved',
+    await page.evaluate(() => document.getElementById('file-name').classList.contains('is-dirty')));
+
+  await page.keyboard.press('Control+s');
+  await page.waitForTimeout(500);
+  const written = await page.evaluate(() => window.__savedText);
+  check('Ctrl+S writes back to the same file', Boolean(written) && written.includes('Added offline'));
+  check('saving clears the unsaved marker',
+    !(await page.evaluate(() => document.getElementById('file-name').classList.contains('is-dirty'))));
+
+  // Dropping a file onto the canvas opens it.
+  await page.evaluate(() => {
+    const data = new DataTransfer();
+    data.items.add(new File(['# Dropped map\n- One\n- Two'], 'dropped.md', { type: 'text/markdown' }));
+    const wrap = document.getElementById('canvas-wrap');
+    wrap.dispatchEvent(new DragEvent('dragover', { dataTransfer: data, bubbles: true, cancelable: true }));
+    wrap.dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(600);
+  check('dropping a file opens it', (await outline()).includes('Dropped map'));
+  check('the dropped file name is adopted', (await page.textContent('#file-name')) === 'dropped.md');
+
+  // A file that is not a mind map fails with a clear message, changing nothing.
+  const beforeBad = await outline();
+  await page.evaluate(() => {
+    const data = new DataTransfer();
+    data.items.add(new File(['{"hello":"world"}'], 'other.json', { type: 'application/json' }));
+    const wrap = document.getElementById('canvas-wrap');
+    wrap.dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(500);
+  check('a file that is not a mind map is refused',
+    (await outline()) === beforeBad && (await page.textContent('#toast')).includes('does not look like a mind map'));
+
   // Export.
   const svg = await page.evaluate(async () => {
     const mod = await import('/src/exporters.js');
@@ -230,10 +313,12 @@ try {
   ]);
   check('png download starts', download.suggestedFilename().endsWith('.png'));
 
-  // Autosave.
+  // Autosave: whatever is on screen now must still be there after a reload.
+  const beforeReload = await outline();
   await page.reload({ waitUntil: 'networkidle' });
-  await page.waitForTimeout(400);
-  check('map survives a reload', (await outline()).includes('Weekly review'));
+  await page.waitForTimeout(500);
+  check('map survives a reload', (await outline()) === beforeReload);
+  check('the file name survives a reload', (await page.textContent('#file-name')) === 'dropped.md');
 
   check('no console errors', errors.length === 0, errors.join(' | '));
 } finally {
