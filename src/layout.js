@@ -151,10 +151,19 @@ function buildEdge(parent, child) {
     ? `M ${round(px)} ${round(py)} L ${round(cx)} ${round(cy)}`
     : `M ${round(px)} ${round(py)} C ${round(px + lead * side)} ${round(py)}, ${round(px + settle * side)} ${round(cy)}, ${round(cx)} ${round(cy)}`;
 
-  // Labels ride the straight portion of the line. Every edge carries an
-  // anchor, so an unlabelled line still knows where a new label would go.
-  const labelX = straight ? (px + cx) / 2 : (px + settle * side + cx) / 2;
-  const labelAnchor = { x: labelX, y: cy };
+  // The label sits at the horizontal centre of the connector, on the line: the
+  // midpoint of the straight run would hug the child, because on a short or
+  // steeply diagonal edge the curve eats most of the span.
+  const labelX = (px + cx) / 2;
+  const labelAnchor = straight
+    ? { x: labelX, y: py }
+    : pointOnCubicAtX(
+      { x: px, y: py },
+      { x: px + lead * side, y: py },
+      { x: px + settle * side, y: cy },
+      { x: cx, y: cy },
+      labelX,
+    );
   return {
     id: `${parent.id}->${child.id}`,
     from: parent,
@@ -165,6 +174,34 @@ function buildEdge(parent, child) {
     labelAnchor,
     label: child.label ? { ...child.label, ...labelAnchor, color: child.color } : null,
   };
+}
+
+function cubicPoint(p0, p1, p2, p3, t) {
+  const mt = 1 - t;
+  const a = mt * mt * mt;
+  const b = 3 * mt * mt * t;
+  const c = 3 * mt * t * t;
+  const d = t * t * t;
+  return {
+    x: a * p0.x + b * p1.x + c * p2.x + d * p3.x,
+    y: a * p0.y + b * p1.y + c * p2.y + d * p3.y,
+  };
+}
+
+/**
+ * The point on a connector at a given x. Our control points never double back
+ * horizontally, so x is monotonic along the curve and a bisection converges.
+ */
+function pointOnCubicAtX(p0, p1, p2, p3, targetX) {
+  const rising = p3.x > p0.x;
+  let low = 0;
+  let high = 1;
+  for (let i = 0; i < 24; i++) {
+    const mid = (low + high) / 2;
+    if (rising === cubicPoint(p0, p1, p2, p3, mid).x < targetX) low = mid;
+    else high = mid;
+  }
+  return cubicPoint(p0, p1, p2, p3, (low + high) / 2);
 }
 
 function countAll(node) {
