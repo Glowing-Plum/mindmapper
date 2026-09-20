@@ -8,12 +8,15 @@
 
 import { EDGE_LABEL_STYLE, createMeasurer, lineHeightFor, styleForDepth, styleForNode } from './measure.js';
 import { branchColor } from './palette.js';
+import { segmentLine } from './scripture.js';
+import { formatChip, rollupAll } from './timing.js';
 
 export const DEFAULT_OPTIONS = {
   mode: 'both', // 'both' | 'right'
   hGap: 44, // horizontal space between a parent and its children
   vGap: 14, // vertical space between sibling boxes
   measure: null,
+  talkMode: false, // show scripture references and timings
 };
 
 const sharedMeasurer = createMeasurer();
@@ -24,13 +27,21 @@ const sharedMeasurer = createMeasurer();
  * @returns {{nodes: object[], edges: object[], bounds: object, byId: Map<string, object>, root: object}}
  */
 export function computeLayout(root, options = {}) {
-  const { mode, hGap, vGap, measure } = { ...DEFAULT_OPTIONS, ...options };
+  const { mode, hGap, vGap, measure, talkMode } = { ...DEFAULT_OPTIONS, ...options };
   const measureText = measure ?? sharedMeasurer;
+  const timings = talkMode ? rollupAll(root) : null;
 
   const makeBox = (node, depth, side, colorIndex, parentBox) => {
     const style = depth === 0 ? styleForDepth(0) : styleForNode(node, depth);
     const fallback = depth === 0 ? 'Central idea' : 'Untitled';
     const metrics = measureText(node.text?.trim() ? node.text : fallback, style);
+
+    const chip = talkMode ? formatChip(timings?.get(node.id)?.total ?? 0) : '';
+    const meta = talkMode
+      ? [chip, node.note?.trim() ? '\u270E' : ''].filter(Boolean).join(' ')
+      : '';
+    const metaWidth = meta ? measureText(`  ${meta}`, style).width : 0;
+
     const label = node.edgeLabel?.trim() && parentBox
       ? measureText(node.edgeLabel, EDGE_LABEL_STYLE)
       : null;
@@ -41,9 +52,18 @@ export function computeLayout(root, options = {}) {
       side,
       style,
       lines: metrics.lines,
+      // Each line split into plain text and scripture references, so the
+      // references can be drawn as references.
+      segments: talkMode ? metrics.lines.map((line) => segmentLine(line)) : null,
+      timing: timings?.get(node.id) ?? null,
+      // The time and note marker flow after the text, and the box is widened
+      // to hold them, so they can never collide with a connector or a column.
+      meta,
+      metaWidth,
+      hasNote: Boolean(node.note?.trim()),
       lineHeight: lineHeightFor(style),
-      textWidth: metrics.width,
-      w: Math.round(metrics.width + style.padX * 2),
+      textWidth: metrics.width + metaWidth,
+      w: Math.round(metrics.width + metaWidth + style.padX * 2),
       h: Math.round(Math.max(style.minHeight, metrics.height + style.padY * 2)),
       x: 0,
       y: 0,

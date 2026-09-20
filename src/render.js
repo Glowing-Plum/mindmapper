@@ -88,7 +88,10 @@ export function createRenderer(svg) {
 
   function renderText(text, box) {
     const { style } = box;
-    const key = [box.lines.join('\u0000'), box.w, box.h, style.fontSize, style.fontWeight, style.italic].join('|');
+    const key = [
+      box.lines.join('\u0000'), box.w, box.h, style.fontSize, style.fontWeight, style.italic,
+      box.segments ? 'talk' : 'plain', box.meta ?? '',
+    ].join('|');
     if (text.dataset.key === key) return;
     text.dataset.key = key;
     text.style.fontSize = `${style.fontSize}px`;
@@ -97,12 +100,25 @@ export function createRenderer(svg) {
     text.textContent = '';
     const top = (box.h - box.lines.length * box.lineHeight) / 2;
     box.lines.forEach((line, index) => {
-      const tspan = svgEl('tspan', {
-        x: style.padX,
-        y: Math.round(top + index * box.lineHeight + box.lineHeight * 0.76),
+      const y = Math.round(top + index * box.lineHeight + box.lineHeight * 0.76);
+      const runs = box.segments?.[index] ?? [{ text: line, reference: null }];
+      runs.forEach((run, runIndex) => {
+        // Only the first run on a line is positioned; the rest flow after it.
+        const tspan = runIndex === 0 ? svgEl('tspan', { x: style.padX, y }) : svgEl('tspan', {});
+        if (run.reference) {
+          tspan.setAttribute('class', 'scripture');
+          tspan.dataset.reference = run.reference.canonical;
+        }
+        tspan.textContent = run.text;
+        text.append(tspan);
       });
-      tspan.textContent = line;
-      text.append(tspan);
+
+      // The time and note marker trail the last line, inside the box.
+      if (box.meta && index === box.lines.length - 1) {
+        const metaSpan = svgEl('tspan', { class: 'node-meta' });
+        metaSpan.textContent = `  ${box.meta}`;
+        text.append(metaSpan);
+      }
     });
   }
 

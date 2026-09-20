@@ -324,6 +324,91 @@ try {
   check('a file that is not a mind map is refused',
     (await outline()) === beforeBad && (await page.textContent('#toast')).includes('does not look like a mind map'));
 
+  // ---- talk mode ---------------------------------------------------------
+  await page.fill('#outline', [
+    '# Comfort for the bereaved',
+    '- Grief is natural',
+    '  - Genesis 23:2',
+    '  - John 11:35',
+    '- Jehovah promises comfort',
+    '  - 시편 34:18',
+  ].join('\n'));
+  await page.click('#btn-generate');
+  await page.waitForTimeout(400);
+  await page.click('#btn-talk');
+  await page.waitForTimeout(400);
+
+  check('talk mode marks scripture on the map', (await page.locator('.scripture').count()) === 3);
+  check('the scripture index lists them as written',
+    (await page.locator('.ref-row').count()) === 3
+    && (await page.textContent('.ref-row .ref-cite')) === 'Genesis 23:2');
+  check('a Korean reference resolves to its English book', await page.evaluate(async () => {
+    const mod = await import('/src/scripture.js');
+    return mod.findReferences('시편 34:18')[0].canonical === 'Psalms 34:18';
+  }));
+
+  // Timings roll up, and the target is judged.
+  await page.fill('#talk-target', '10');
+  const timeNode = async (text, minutes) => {
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(120);
+    await clickNode(text);
+    await page.waitForTimeout(150);
+    await page.fill('#talk-minutes', String(minutes));
+    await page.dispatchEvent('#talk-minutes', 'change');
+    await page.waitForTimeout(250);
+  };
+  await timeNode('Grief is natural', 4);
+  await timeNode('Jehovah promises comfort', 5);
+  check('timings roll up to the root', (await page.textContent('#talk-total')).includes('9 min'),
+    await page.textContent('#talk-total'));
+  check('a time chip is drawn on the map', await page.evaluate(() =>
+    [...document.querySelectorAll('.node-meta')].some((n) => n.textContent.includes('9m'))));
+
+  await page.fill('#talk-target', '5');
+  await page.waitForTimeout(250);
+  check('going over the time is flagged',
+    (await page.getAttribute('#talk-total', 'class')).includes('is-over'));
+
+  // Speaker notes.
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press('Escape');
+  await clickNode('Jehovah promises comfort');
+  await page.waitForTimeout(200);
+  await page.fill('#talk-note', 'Pause here.');
+  await page.dispatchEvent('#talk-note', 'blur');
+  await page.waitForTimeout(300);
+  check('a note is kept and marked on the map', await page.evaluate(() => {
+    const node = [...window.mindmapper.doc.nodes.values()].find((n) => n.text === 'Jehovah promises comfort');
+    return node.note === 'Pause here.';
+  }));
+
+  // The printable outline.
+  const printed = await page.evaluate(() => {
+    window.print = () => { window.__printed = true; };
+    document.getElementById('btn-print').click();
+    return {
+      called: window.__printed === true,
+      title: document.querySelector('.print-title')?.textContent,
+      scriptures: document.querySelectorAll('.print-scripture').length,
+      notes: document.querySelectorAll('.print-note').length,
+      times: document.querySelectorAll('.print-time').length,
+    };
+  });
+  check('print builds an outline with scripture, times and notes',
+    printed.called && printed.title === 'Comfort for the bereaved'
+    && printed.scriptures === 3 && printed.notes === 1 && printed.times >= 2,
+    JSON.stringify(printed));
+
+  // Talk mode is remembered.
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(500);
+  check('talk mode survives a reload', (await page.getAttribute('#btn-talk', 'aria-pressed')) === 'true');
+  await page.click('#btn-talk');
+  await page.waitForTimeout(300);
+  check('talk mode can be turned off', (await page.locator('.scripture').count()) === 0);
+
   // Export.
   const svg = await page.evaluate(async () => {
     const mod = await import('/src/exporters.js');

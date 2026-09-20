@@ -18,6 +18,7 @@ export function createNode(text = '', extra = {}) {
     italic: false,
     highlight: null, // a HIGHLIGHTS id, or null
     edgeLabel: '', // text drawn on the line coming from this node's parent
+    minutes: null, // how long this part of the talk should take
     children: [],
     ...extra,
   };
@@ -63,6 +64,7 @@ export function carryFormatting(fromRoot, toRoot) {
       node.italic = source.italic;
       node.highlight = source.highlight;
       node.edgeLabel = source.edgeLabel;
+      node.minutes = source.minutes;
       node.colorIndex = source.colorIndex;
       node.note = source.note;
       node.collapsed = source.collapsed && node.children.length > 0;
@@ -94,6 +96,7 @@ export class MindMapDoc {
         italic: Boolean(raw?.italic),
         highlight: raw?.highlight ?? null,
         edgeLabel: String(raw?.edgeLabel ?? ''),
+        minutes: Number.isFinite(raw?.minutes) && raw.minutes > 0 ? raw.minutes : null,
         children: Array.isArray(raw?.children) ? raw.children.map(revive) : [],
       });
     return new MindMapDoc(revive(data?.root ?? data));
@@ -109,6 +112,7 @@ export class MindMapDoc {
       italic: node.italic || undefined,
       highlight: node.highlight ?? undefined,
       edgeLabel: node.edgeLabel || undefined,
+      minutes: node.minutes ?? undefined,
       children: node.children.map(strip),
     });
     return { version: 1, root: strip(this.root) };
@@ -276,6 +280,18 @@ export class MindMapDoc {
     if (!node || node.highlight === highlight) return null;
     return this.transact(() => {
       node.highlight = highlight;
+      return node;
+    });
+  }
+
+  /** Sets how many minutes this part of the talk should take (null clears). */
+  setMinutes(id, minutes) {
+    const node = this.get(id);
+    if (!node) return null;
+    const value = Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes * 10) / 10 : null;
+    if (node.minutes === value) return null;
+    return this.transact(() => {
+      node.minutes = value;
       return node;
     });
   }
