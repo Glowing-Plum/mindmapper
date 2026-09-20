@@ -426,9 +426,8 @@ try {
     await page.waitForTimeout(120);
     await clickNode(text);
     await page.waitForTimeout(150);
-    await page.fill('#talk-minutes', String(minutes));
-    await page.dispatchEvent('#talk-minutes', 'change');
-    await page.waitForTimeout(250);
+    await page.fill('#talk-minutes', String(minutes)); // saves itself, no Enter
+    await page.waitForTimeout(450);
   };
   await timeNode('Grief is natural', 4);
   await timeNode('Jehovah promises comfort', 5);
@@ -447,13 +446,68 @@ try {
   await page.keyboard.press('Escape');
   await clickNode('Jehovah promises comfort');
   await page.waitForTimeout(200);
-  await page.fill('#talk-note', 'Pause here.');
-  await page.dispatchEvent('#talk-note', 'blur');
-  await page.waitForTimeout(300);
+  await page.fill('#talk-note', 'Pause here.'); // saves itself, no Enter
+  await page.waitForTimeout(450);
   check('a note is kept and marked on the map', await page.evaluate(() => {
     const node = [...window.mindmapper.doc.nodes.values()].find((n) => n.text === 'Jehovah promises comfort');
     return node.note === 'Pause here.';
   }));
+
+  // The rehearsal timer.
+  await page.click('#btn-timer');
+  await page.waitForTimeout(1600);
+  const timer = await page.evaluate(() => ({
+    clock: document.getElementById('timer-clock').textContent,
+    button: document.getElementById('btn-timer').textContent,
+    onCanvas: !document.getElementById('canvas-timer').hidden,
+  }));
+  check('the timer runs and shows on the canvas',
+    /0:0[12]/.test(timer.clock) && timer.button === 'Pause' && timer.onCanvas, JSON.stringify(timer));
+  await page.click('#btn-timer');
+  const held = await page.textContent('#timer-clock');
+  await page.waitForTimeout(800);
+  check('pausing holds the clock', (await page.textContent('#timer-clock')) === held);
+  await page.click('#btn-timer-reset');
+  await page.waitForTimeout(200);
+  check('resetting clears it and hides the canvas clock',
+    (await page.textContent('#timer-clock')) === '0:00'
+    && await page.evaluate(() => document.getElementById('canvas-timer').hidden));
+
+  // Tapping a verse opens the library panel in the corner.
+  await page.click('.node .scripture');
+  await page.waitForTimeout(400);
+  const versePanel = await page.evaluate(() => {
+    const el = document.getElementById('verse-panel');
+    const rect = el.getBoundingClientRect();
+    const wrap = document.getElementById('canvas-wrap').getBoundingClientRect();
+    return {
+      open: !el.hidden,
+      corner: rect.left - wrap.left < 40 && wrap.bottom - rect.bottom < 40,
+      cite: document.getElementById('verse-cite').textContent,
+      src: document.getElementById('verse-frame').getAttribute('src'),
+    };
+  });
+  check('tapping a verse opens it bottom-left, as written, in the library',
+    versePanel.open && versePanel.corner && versePanel.cite === 'Genesis 23:2'
+    && versePanel.src.includes('wol.jw.org'), JSON.stringify(versePanel));
+
+  await page.selectOption('#talk-wol-lang', 'ko');
+  await page.waitForTimeout(400);
+  check('the language choice reloads the open verse',
+    (await page.getAttribute('#verse-frame', 'src')).includes('/ko/'));
+  await page.click('#btn-verse-close');
+  await page.waitForTimeout(200);
+  check('the verse panel closes', await page.evaluate(() =>
+    document.getElementById('verse-panel').hidden));
+  await page.selectOption('#talk-wol-lang', 'en');
+
+  // Minutes and notes need no Enter, and land on the node being typed into.
+  await clickNode('Grief is natural');
+  await page.waitForTimeout(200);
+  await page.fill('#talk-minutes', '6');
+  await page.waitForTimeout(450);
+  check('minutes save as you type', await page.evaluate(() =>
+    [...window.mindmapper.doc.nodes.values()].find((n) => n.text === 'Grief is natural').minutes === 6));
 
   // The printable outline.
   const printed = await page.evaluate(() => {

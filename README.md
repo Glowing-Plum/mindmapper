@@ -43,7 +43,23 @@ on a section always wins over the sum of its parts. Set the time you have and
 the panel shows where you stand, flagging both over-running and not filling
 the slot.
 
-**Speaker notes** live on any node, marked with ✎ on the map.
+**Speaker notes** live on any node, marked with ✎ on the map. Minutes and notes
+save as you type — no Enter needed. A run of keystrokes folds into a single
+undo step, and an edit always lands on the node you were typing into, even if
+you click away mid-word.
+
+**A rehearsal timer** counts up while you practise and says how much of your
+slot is left, turning amber near the end and red once it is spent. While it
+runs it also shows at the top of the canvas, so you can watch the map instead
+of the panel.
+
+**Tapping a verse** opens it in a panel in the bottom-left corner, using the
+Watchtower Online Library in the language you choose (English and Korean are
+built in; any other language can be pasted in from wol.jw.org). The panel can
+be resized, and **Open ↗** takes the verse to a full tab — some libraries
+refuse to be displayed inside another page, and there is no way to detect that
+in advance, so the way out is always in sight. You can also switch to opening
+verses in a new tab at BibleGateway, YouVersion or Blue Letter Bible instead.
 
 **Print / PDF** produces the thing you carry to the podium: the outline
 indented by level, scripture in bold, times down the right margin and your
@@ -136,9 +152,10 @@ always a faithful text version of what you see.
 one out to the side adds a child, the one underneath adds a sibling. They take
 the colour of the branch they would extend.
 
-**Drag a card anywhere.** Dropping on the middle of a node makes it a child;
-dropping near a node's top or bottom edge places it above or below as a
-sibling, with a line showing exactly where it will land. Moves that would put a
+**Drag a card anywhere.** Dropping on the middle of a node adds it to that
+node's children; dropping near a node's top or bottom edge places it directly
+above or below, with a line showing exactly where it will land — that is how
+you order a card among its siblings, at any depth. Moves that would put a
 node inside its own subtree are refused.
 
 Scroll or drag empty space to pan, or hold <kbd>Space</kbd> and drag from
@@ -231,8 +248,8 @@ cannot carry.
 `npm run test:browser` boots the app in Chromium and exercises editing,
 dragging, formatting, line labels, collapsing, undo, version history, opening
 and saving files, drag-and-drop, talk mode, timings, the scripture index, the
-printable outline, space-to-pan, the node handles, autosave and export
-(62 checks). It skips itself cleanly
+printable outline, space-to-pan, the node handles, the rehearsal timer, the
+verse panel, autosave and export (69 checks). It skips itself cleanly
 when Playwright is not installed.
 
 ## Browser support

@@ -13,8 +13,8 @@ import {
   clearState, clearVersions, getVersion, listVersions, loadState, pushVersion, relativeTime, saveState,
 } from './storage.js';
 import { copyText, download, markdownFor, slugify, toPngBlob, toSvgString } from './exporters.js';
-import { LINK_TEMPLATES, collectReferences, findReferences, referenceUrl } from './scripture.js';
-import { formatMinutes, rollup, rollupAll, summarise } from './timing.js';
+import { LINK_TEMPLATES, WOL_LANGUAGES, collectReferences, findReferences, referenceUrl } from './scripture.js';
+import { formatClock, formatMinutes, rollup, rollupAll, summarise } from './timing.js';
 import {
   ensureExtension, openFile, parseFileContents, readDroppedFile, saveFileAs, serialiseDoc,
   supportsFileHandles, writeToHandle,
@@ -51,6 +51,16 @@ const ui = {
   talkLink: el('talk-link'),
   talkLinkCustom: el('talk-link-custom'),
   printView: el('print-view'),
+  timerClock: el('timer-clock'),
+  timerNote: el('timer-note'),
+  timerButton: el('btn-timer'),
+  canvasTimer: el('canvas-timer'),
+  canvasTimerClock: el('canvas-timer-clock'),
+  versePanel: el('verse-panel'),
+  verseCite: el('verse-cite'),
+  verseFrame: el('verse-frame'),
+  wolLang: el('talk-wol-lang'),
+  wolCustom: el('talk-wol-custom'),
 };
 
 const state = {
@@ -69,8 +79,12 @@ const state = {
   // Talk preparation: timings, scripture references and speaker notes.
   talkMode: false,
   talkTarget: 0,
-  linkPreset: 'none',
+  linkPreset: 'wol',
   linkCustom: '',
+  wolLang: 'en',
+  wolCustom: '',
+  // Rehearsal timer: elapsed seconds, and when the current run started.
+  timer: { elapsed: 0, startedAt: 0 },
 };
 
 const saved = loadState();
@@ -145,6 +159,106 @@ function linkTemplate() {
   return LINK_TEMPLATES.find((entry) => entry.id === state.linkPreset)?.template ?? null;
 }
 
+/** The library address for the chosen language. */
+function wolTemplate() {
+  if (state.wolLang === 'custom') return state.wolCustom.trim() || null;
+  return WOL_LANGUAGES.find((entry) => entry.id === state.wolLang)?.template ?? null;
+}
+
+// ----------------------------------------------------------- verse panel
+
+let versePanelUrl = null;
+
+/**
+ * Opens a reference in the panel in the corner, or in a tab.
+ * `label` is how it was written, which is what the panel shows; the link is
+ * always built from the canonical English form.
+ */
+function openReference(reference, { node = null, label = null } = {}) {
+  if (!reference) return;
+  const shown = label ?? reference.text;
+  if (state.linkPreset === 'wol') {
+    const url = referenceUrl(reference, wolTemplate());
+    if (!url) {
+      showToast('Pick a library language in the Talk panel');
+      showPanel('talk');
+      return;
+    }
+    versePanelUrl = url;
+    ui.verseCite.textContent = shown;
+    ui.verseCite.title = reference.canonical;
+    ui.verseFrame.src = url;
+    ui.versePanel.hidden = false;
+    return;
+  }
+  const url = referenceUrl(reference, linkTemplate());
+  if (url) window.open(url, '_blank', 'noopener');
+  else if (node) select(node.id, { reveal: true });
+}
+
+function closeVersePanel() {
+  ui.versePanel.hidden = true;
+  ui.verseFrame.removeAttribute('src');
+  versePanelUrl = null;
+}
+
+// --------------------------------------------------------- rehearsal timer
+
+function timerRunning() {
+  return state.timer.startedAt > 0;
+}
+
+function timerSeconds() {
+  const running = timerRunning() ? (Date.now() - state.timer.startedAt) / 1000 : 0;
+  return state.timer.elapsed + running;
+}
+
+let timerTick = null;
+
+function toggleTimer() {
+  if (timerRunning()) {
+    state.timer.elapsed = timerSeconds();
+    state.timer.startedAt = 0;
+    clearInterval(timerTick);
+    timerTick = null;
+  } else {
+    state.timer.startedAt = Date.now();
+    // Timestamp-based, so it stays accurate even if a tick is missed.
+    timerTick = setInterval(updateTimer, 500);
+  }
+  updateTimer();
+}
+
+function resetTimer() {
+  clearInterval(timerTick);
+  timerTick = null;
+  state.timer = { elapsed: 0, startedAt: 0 };
+  updateTimer();
+}
+
+function updateTimer() {
+  const seconds = timerSeconds();
+  const targetSeconds = state.talkTarget * 60;
+  const clock = formatClock(seconds);
+  ui.timerClock.textContent = clock;
+  ui.canvasTimerClock.textContent = clock;
+  ui.timerButton.textContent = timerRunning() ? 'Pause' : seconds > 0 ? 'Resume' : 'Start';
+
+  // Amber for the last tenth of the slot, red once it is spent.
+  const status = targetSeconds > 0 && seconds > targetSeconds
+    ? 'is-over'
+    : targetSeconds > 0 && seconds > targetSeconds * 0.9 ? 'is-close' : '';
+  ui.timerClock.className = `timer-clock ${status}`;
+  ui.canvasTimer.className = `canvas-timer ${status}`;
+  ui.canvasTimer.hidden = !timerRunning() && seconds === 0;
+
+  ui.timerNote.textContent = targetSeconds > 0
+    ? seconds > targetSeconds
+      ? `${formatClock(seconds - targetSeconds)} over your ${formatMinutes(state.talkTarget)}`
+      : `${formatClock(targetSeconds - seconds)} left of ${formatMinutes(state.talkTarget)}`
+    : 'Counts up while you practise. Set the time you have above to see what is left.';
+}
+
 function updateTalkPanel() {
   if (el('panel-talk').hidden && !state.talkMode) return;
 
@@ -208,12 +322,8 @@ function renderReferenceList() {
       where.textContent = context;
       row.append(where);
     }
-    row.title = linkTemplate() ? `Open ${reference.canonical}` : `Go to "${node.text}"`;
-    row.addEventListener('click', () => {
-      const url = referenceUrl(reference, linkTemplate());
-      if (url) window.open(url, '_blank', 'noopener');
-      else select(node.id, { reveal: true });
-    });
+    row.title = `Open ${reference.canonical}`;
+    row.addEventListener('click', () => openReference(reference, { node }));
     ui.talkRefs.append(row);
   }
 }
@@ -296,6 +406,21 @@ function buildLinkOptions() {
     option.textContent = entry.name;
     ui.talkLink.append(option);
   }
+  for (const entry of WOL_LANGUAGES) {
+    const option = document.createElement('option');
+    option.value = entry.id;
+    option.textContent = entry.name;
+    ui.wolLang.append(option);
+  }
+}
+
+/** Only the settings that apply to the chosen way of opening a verse. */
+function syncScriptureSettings() {
+  const isWol = state.linkPreset === 'wol';
+  ui.talkLinkCustom.hidden = state.linkPreset !== 'custom';
+  ui.wolLang.hidden = !isWol;
+  el('talk-wol-lang-label').hidden = !isWol;
+  ui.wolCustom.hidden = !isWol || state.wolLang !== 'custom';
 }
 
 function positionToolbar() {
@@ -429,6 +554,48 @@ function confirmAction({ title, body, confirmLabel = 'Continue' }) {
     ui.confirm.addEventListener('close', () => resolve(ui.confirm.returnValue === 'confirm'), { once: true });
     ui.confirm.showModal();
   });
+}
+
+// ------------------------------------------------- typing straight into a node
+
+const live = { timer: null, key: '', at: 0, run: null };
+const BURST_MS = 1200; // keystrokes closer together than this are one edit
+
+/** True when this field is mid-burst, so the change should fold into the last. */
+function inBurst(field, id) {
+  return live.key === `${field}:${id}` && Date.now() - live.at < BURST_MS;
+}
+
+/**
+ * Saves what was typed a beat after typing stops, without needing Enter.
+ * The node is captured when the key is pressed, not when the save runs: the
+ * selection can move on in between, and the edit belongs to the node that was
+ * being typed into.
+ */
+function liveCommit(field, id, run) {
+  if (!id) return;
+  const key = `${field}:${id}`;
+  if (live.run && live.key !== key) flushLiveCommit(); // moved on: save the old one now
+  live.key = key;
+  live.run = run;
+  clearTimeout(live.timer);
+  live.timer = setTimeout(() => {
+    const pending = live.run;
+    live.run = null;
+    live.at = Date.now();
+    pending?.();
+    refresh({ syncOutline: false });
+  }, 300);
+}
+
+function flushLiveCommit() {
+  if (!live.run) return;
+  clearTimeout(live.timer);
+  const pending = live.run;
+  live.run = null;
+  live.at = Date.now();
+  pending();
+  refresh({ syncOutline: false });
 }
 
 // ------------------------------------------------------------------ files
@@ -607,6 +774,7 @@ async function generateFromOutline({
 // -------------------------------------------------------------- selection
 
 function select(id, { reveal = false } = {}) {
+  flushLiveCommit(); // an unsaved keystroke belongs to the node you are leaving
   state.selectedId = id;
   if (reveal && id) {
     doc.revealPathTo(id);
@@ -871,6 +1039,7 @@ ui.canvas.addEventListener('pointerdown', (event) => {
     return;
   }
   if (state.selectedId !== id) {
+    flushLiveCommit();
     state.selectedId = id;
     refresh({ syncOutline: false });
   }
@@ -893,15 +1062,10 @@ ui.wrap.addEventListener('pointermove', (event) => {
 ui.canvas.addEventListener('click', (event) => {
   const cite = event.target.closest('.scripture');
   if (!cite) return;
-  const template = linkTemplate();
-  if (!template) {
-    showToast('Pick where to open references in the Talk panel');
-    showPanel('talk');
-    return;
-  }
+  // The element carries the canonical form for the link and shows the words
+  // as they were typed.
   const [reference] = findReferences(cite.dataset.reference ?? '');
-  const url = referenceUrl(reference, template);
-  if (url) window.open(url, '_blank', 'noopener');
+  openReference(reference, { label: cite.textContent });
 });
 
 ui.canvas.addEventListener('dblclick', (event) => {
@@ -967,11 +1131,11 @@ function dropTarget(clientX, clientY, draggingId) {
       && point.y >= box.y - margin && point.y <= box.y + box.h + margin;
     if (!inside) continue;
     // The root has no siblings, so it can only take children.
-    if (box.isRoot) return { kind: 'child', box };
+    if (box.isRoot) return { kind: 'child', box, y: point.y };
     const fraction = (point.y - box.y) / box.h;
-    if (fraction < 0.3) return { kind: 'before', box };
-    if (fraction > 0.7) return { kind: 'after', box };
-    return { kind: 'child', box };
+    if (fraction < 0.3) return { kind: 'before', box, y: point.y };
+    if (fraction > 0.7) return { kind: 'after', box, y: point.y };
+    return { kind: 'child', box, y: point.y };
   }
   return null;
 }
@@ -980,6 +1144,9 @@ function applyDrop(id, target) {
   const { kind, box } = target;
   if (kind === 'child') {
     if (box.id === id) return;
+    // Dropped into a node: it joins the end of that node's children. To choose
+    // a position in the list, drop on the edge of the child to sit beside --
+    // the zones below handle that, and they are precise.
     if (!doc.move(id, box.id)) showToast('A node cannot be moved inside itself');
     return;
   }
@@ -1351,24 +1518,50 @@ function bindChrome() {
   ui.talkTarget.addEventListener('input', () => {
     state.talkTarget = Math.max(0, Number(ui.talkTarget.value) || 0);
     updateTalkPanel();
+    updateTimer();
     scheduleSave();
   });
-  ui.talkMinutes.addEventListener('change', () => {
-    if (!state.selectedId) return;
-    doc.setMinutes(state.selectedId, Number(ui.talkMinutes.value));
-    refresh({ syncOutline: false });
+  // Minutes and notes save as you type. A run of keystrokes folds into one
+  // undo step; a pause, or moving to another node, starts a new one.
+  ui.talkMinutes.addEventListener('input', () => {
+    const id = state.selectedId;
+    const minutes = Number(ui.talkMinutes.value);
+    liveCommit('minutes', id, () => doc.setMinutes(id, minutes, { amend: inBurst('minutes', id) }));
   });
-  // Notes commit on blur so every keystroke is not its own undo step.
-  ui.talkNote.addEventListener('blur', () => {
-    if (!state.selectedId) return;
-    doc.setNote(state.selectedId, ui.talkNote.value);
-    refresh({ syncOutline: false });
+  ui.talkNote.addEventListener('input', () => {
+    const id = state.selectedId;
+    const note = ui.talkNote.value;
+    liveCommit('note', id, () => doc.setNote(id, note, { amend: inBurst('note', id) }));
   });
+  for (const field of [ui.talkMinutes, ui.talkNote]) {
+    field.addEventListener('blur', () => flushLiveCommit());
+  }
   ui.talkLink.addEventListener('change', () => {
     state.linkPreset = ui.talkLink.value;
-    ui.talkLinkCustom.hidden = state.linkPreset !== 'custom';
+    syncScriptureSettings();
     renderReferenceList();
     scheduleSave();
+  });
+  ui.wolLang.addEventListener('change', () => {
+    state.wolLang = ui.wolLang.value;
+    syncScriptureSettings();
+    // Follow the language change with whatever is already open.
+    if (!ui.versePanel.hidden) {
+      const [reference] = findReferences(ui.verseCite.title || ui.verseCite.textContent);
+      if (reference) openReference(reference, { label: ui.verseCite.textContent });
+    }
+    scheduleSave();
+  });
+  ui.wolCustom.addEventListener('input', () => {
+    state.wolCustom = ui.wolCustom.value;
+    scheduleSave();
+  });
+
+  el('btn-timer').addEventListener('click', toggleTimer);
+  el('btn-timer-reset').addEventListener('click', resetTimer);
+  el('btn-verse-close').addEventListener('click', closeVersePanel);
+  el('btn-verse-open').addEventListener('click', () => {
+    if (versePanelUrl) window.open(versePanelUrl, '_blank', 'noopener');
   });
   ui.talkLinkCustom.addEventListener('input', () => {
     state.linkCustom = ui.talkLinkCustom.value;
@@ -1476,6 +1669,8 @@ function bindChrome() {
         target: state.talkTarget,
         linkPreset: state.linkPreset,
         linkCustom: state.linkCustom,
+        wolLang: state.wolLang,
+        wolCustom: state.wolCustom,
       },
     });
     pushVersion(doc.toJSON());
@@ -1504,12 +1699,17 @@ function boot() {
   const talk = saved?.talk ?? {};
   state.talkMode = Boolean(talk.mode);
   state.talkTarget = Number(talk.target) || 0;
-  state.linkPreset = LINK_TEMPLATES.some((entry) => entry.id === talk.linkPreset) ? talk.linkPreset : 'none';
+  state.linkPreset = LINK_TEMPLATES.some((entry) => entry.id === talk.linkPreset) ? talk.linkPreset : 'wol';
   state.linkCustom = String(talk.linkCustom ?? '');
+  state.wolLang = WOL_LANGUAGES.some((entry) => entry.id === talk.wolLang) ? talk.wolLang : 'en';
+  state.wolCustom = String(talk.wolCustom ?? '');
   ui.talkTarget.value = state.talkTarget || '';
   ui.talkLink.value = state.linkPreset;
   ui.talkLinkCustom.value = state.linkCustom;
-  ui.talkLinkCustom.hidden = state.linkPreset !== 'custom';
+  ui.wolLang.value = state.wolLang;
+  ui.wolCustom.value = state.wolCustom;
+  syncScriptureSettings();
+  updateTimer();
   if (state.talkMode) showPanel('talk');
   bindFileDrop();
   refresh();

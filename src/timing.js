@@ -79,6 +79,16 @@ function trimZero(value) {
   return String(Number(value.toFixed(1)));
 }
 
+/** Seconds as a clock: "0:09", "12:45", "1:02:30". */
+export function formatClock(seconds) {
+  const total = Math.max(0, Math.floor(seconds));
+  const s = total % 60;
+  const m = Math.floor(total / 60) % 60;
+  const h = Math.floor(total / 3600);
+  const pad = (value) => String(value).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
 /** A compact form for the chip on a node: "4m", "12m", "1h05". */
 export function formatChip(minutes) {
   if (!Number.isFinite(minutes) || minutes <= 0) return '';
