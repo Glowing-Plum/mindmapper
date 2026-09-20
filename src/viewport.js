@@ -6,6 +6,9 @@ export const MAX_ZOOM = 3;
 
 export function createViewport(svg, scene, { onChange } = {}) {
   const state = { x: 0, y: 0, k: 1 };
+  // Set by the app while the space bar is held: then a drag pans from
+  // anywhere, including from on top of a node.
+  const modifiers = { spaceHeld: false };
   const pointers = new Map();
   let panning = null;
   let pinch = null;
@@ -165,7 +168,8 @@ export function createViewport(svg, scene, { onChange } = {}) {
       return;
     }
     const onEmptySpace = !event.target.closest('.node');
-    const wantsPan = event.button === 1 || (event.button === 0 && onEmptySpace);
+    const wantsPan = event.button === 1
+      || (event.button === 0 && (onEmptySpace || modifiers.spaceHeld));
     if (wantsPan) beginPan(event);
   });
 
@@ -208,6 +212,7 @@ export function createViewport(svg, scene, { onChange } = {}) {
 
   return {
     state,
+    modifiers,
     apply,
     toWorld,
     toScreen,

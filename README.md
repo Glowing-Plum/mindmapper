@@ -125,15 +125,24 @@ always a faithful text version of what you see.
 | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>B</kbd> / <kbd>I</kbd> | Bold / italic |
 | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>H</kbd> | Cycle the text highlight |
 | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>L</kbd> | Label the line coming into this node |
-| <kbd>Space</kbd> | Collapse or expand (the bubble counts what is hidden) |
+| Hold <kbd>Space</kbd> + drag | Pan from anywhere, even over a node |
+| <kbd>.</kbd> | Collapse or expand (the bubble counts what is hidden) |
 | <kbd>Delete</kbd> | Delete the node and its subtree |
 | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Z</kbd> | Undo (add <kbd>Shift</kbd> to redo) |
 | <kbd>Shift</kbd> + <kbd>F</kbd> | Fit the map on screen |
 | <kbd>?</kbd> | Shortcut help |
 
-Drag a node onto another to re-parent it — moves that would put a node inside
-its own subtree are refused. Scroll or drag empty space to pan;
-<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + scroll, or pinch, to zoom.
+**Two handles** appear on a node while it is selected or being typed in: the
+one out to the side adds a child, the one underneath adds a sibling. They take
+the colour of the branch they would extend.
+
+**Drag a card anywhere.** Dropping on the middle of a node makes it a child;
+dropping near a node's top or bottom edge places it above or below as a
+sibling, with a line showing exactly where it will land. Moves that would put a
+node inside its own subtree are refused.
+
+Scroll or drag empty space to pan, or hold <kbd>Space</kbd> and drag from
+anywhere. <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + scroll, or pinch, to zoom.
 
 ### Formatting and line labels
 
@@ -222,7 +231,8 @@ cannot carry.
 `npm run test:browser` boots the app in Chromium and exercises editing,
 dragging, formatting, line labels, collapsing, undo, version history, opening
 and saving files, drag-and-drop, talk mode, timings, the scripture index, the
-printable outline, autosave and export (54 checks). It skips itself cleanly
+printable outline, space-to-pan, the node handles, autosave and export
+(62 checks). It skips itself cleanly
 when Playwright is not installed.
 
 ## Browser support

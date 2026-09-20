@@ -1,29 +1,30 @@
 /* ---------------------------------------------------------------- tokens */
 :root {
-  --canvas-bg: #eef1f6;
-  --surface: #ffffff;
-  --surface-2: #f2f3f7;
-  --border: #e3e5ec;
-  --border-strong: #d2d5e0;
-  --text: #23262f;
-  --text-soft: #6b7089;
-  --root-bg: #ffffff;
-  --root-text: #23262f;
-  --node-hover: rgba(35, 38, 47, 0.06);
-  --hl-yellow: #fbeaa8;
-  --hl-green: #c8ecc9;
-  --hl-blue: #c5e2fb;
-  --hl-pink: #fbd0e0;
-  --accent: #6366f1;
-  --accent-soft: #eef0ff;
+  /* A warm paper tone: easier on the eyes than cool grey for long sessions. */
+  --canvas-bg: #f4f1ea;
+  --surface: #fffefb;
+  --surface-2: #f6f2ea;
+  --border: #e7e0d4;
+  --border-strong: #d7cec0;
+  --text: #2b2723;
+  --text-soft: #6f675c;
+  --root-bg: #fffefb;
+  --root-text: #2b2723;
+  --node-hover: rgba(43, 39, 35, 0.06);
+  --hl-yellow: #fae6a3;
+  --hl-green: #cbe9c4;
+  --hl-blue: #c7e0f6;
+  --hl-pink: #f8cedc;
+  --accent: #6257e8;
+  --accent-soft: #eeecff;
   --danger: #e11d48;
   --warning: #b45309;
   --success: #15803d;
   --scripture: #1d4ed8;
-  --text-faint: #9aa0b8;
-  --shadow-sm: 0 1px 2px rgba(24, 28, 48, 0.08), 0 1px 3px rgba(24, 28, 48, 0.06);
-  --shadow-md: 0 6px 16px rgba(24, 28, 48, 0.1), 0 2px 4px rgba(24, 28, 48, 0.06);
-  --shadow-lg: 0 18px 40px rgba(24, 28, 48, 0.16);
+  --text-faint: #9d9488;
+  --shadow-sm: 0 1px 2px rgba(60, 50, 35, 0.08), 0 1px 3px rgba(60, 50, 35, 0.06);
+  --shadow-md: 0 6px 16px rgba(60, 50, 35, 0.12), 0 2px 4px rgba(60, 50, 35, 0.07);
+  --shadow-lg: 0 18px 40px rgba(60, 50, 35, 0.18);
   --radius: 10px;
   --font: Inter, "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --topbar-h: 56px;
@@ -31,26 +32,26 @@
 }
 
 [data-theme='dark'] {
-  --canvas-bg: #171a24;
-  --surface: #1d2030;
-  --surface-2: #252939;
-  --border: #2f3347;
-  --border-strong: #3c415a;
-  --text: #edeef5;
-  --text-soft: #a0a6c0;
-  --root-bg: #262a3b;
-  --root-text: #edeef5;
-  --node-hover: rgba(237, 238, 245, 0.08);
+  --canvas-bg: #1b1917;
+  --surface: #252220;
+  --surface-2: #2c2825;
+  --border: #383330;
+  --border-strong: #4a443e;
+  --text: #f0ebe4;
+  --text-soft: #a9a094;
+  --root-bg: #2b2724;
+  --root-text: #f0ebe4;
+  --node-hover: rgba(240, 235, 228, 0.08);
   --hl-yellow: #6b5a16;
   --hl-green: #1f5133;
   --hl-blue: #1d4463;
   --hl-pink: #5e2340;
-  --accent: #818cf8;
-  --accent-soft: #2a2e52;
+  --accent: #8f87f5;
+  --accent-soft: #302b46;
   --warning: #fbbf24;
   --success: #4ade80;
-  --scripture: #93b4fd;
-  --text-faint: #7c8299;
+  --scripture: #9db8fb;
+  --text-faint: #7f766b;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 20px 44px rgba(0, 0, 0, 0.55);
@@ -112,6 +113,13 @@ body {
 
 .topbar-group.right {
   margin-left: auto;
+  /* The bar scrolls horizontally when it runs out of room, so the controls
+     you reach for most are pinned and never scroll out of sight. */
+  position: sticky;
+  right: 0;
+  padding-left: 28px;
+  /* Fade whatever passes underneath rather than slicing it mid-word. */
+  background: linear-gradient(to right, transparent, var(--surface) 26px);
 }
 
 .field {
@@ -380,6 +388,8 @@ select:focus-visible,
 }
 
 #canvas.is-panning { cursor: grabbing; }
+#canvas.is-pan-ready { cursor: grab; }
+#canvas.is-pan-ready .node { cursor: grab; }
 #canvas:focus { outline: none; }
 
 /* ----------------------------------------------------------------- nodes */
@@ -430,6 +440,33 @@ select:focus-visible,
   pointer-events: none;
   letter-spacing: -0.005em;
 }
+
+/* The add-a-node handles: shown while a node is selected or being typed in,
+   which is exactly when you want to branch off it. */
+.node-handle {
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  transition: opacity 140ms ease;
+}
+
+.node.is-selected .node-handle,
+.node.is-editing .node-handle,
+.node:hover .node-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.node-handle-hit { fill: transparent; }
+
+.node-handle-dot {
+  fill: var(--handle-color, var(--accent));
+  stroke: var(--canvas-bg);
+  stroke-width: 2;
+  transition: r 120ms ease;
+}
+
+.node-handle:hover .node-handle-dot { r: 6.5; }
 
 .node-badge { cursor: pointer; }
 
@@ -499,6 +536,14 @@ select:focus-visible,
 .edge-label:hover .edge-label-text { fill: var(--text); }
 .edge-label.is-editing .edge-label-text,
 .edge-label.is-editing .edge-label-bg { opacity: 0; }
+
+.drop-line {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.drop-line-cap { fill: var(--accent); }
 
 .drop-indicator {
   fill: none;
@@ -674,15 +719,6 @@ kbd {
     box-shadow: var(--shadow-lg);
   }
   .brand span { display: none; } /* the mark alone carries it on a narrow bar */
-
-  /* The bar scrolls, but the things you reach for most must never scroll away. */
-  .topbar-group.right {
-    position: sticky;
-    right: 0;
-    padding-left: 28px;
-    /* Fade whatever scrolls underneath rather than slicing it mid-word. */
-    background: linear-gradient(to right, transparent, var(--surface) 26px);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

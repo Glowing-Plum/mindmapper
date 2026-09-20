@@ -845,13 +845,23 @@ function nodeIdFromEvent(event) {
 }
 
 ui.canvas.addEventListener('pointerdown', (event) => {
-  if (event.button !== 0) return;
+  if (event.button !== 0 || viewport.modifiers.spaceHeld) return;
   const id = nodeIdFromEvent(event);
   if (!id) {
     if (!editor.isOpen()) {
       state.selectedId = null;
       refresh({ syncOutline: false });
     }
+    return;
+  }
+  const handle = event.target.closest('.node-handle');
+  if (handle) {
+    event.preventDefault();
+    const kind = handle.dataset.handle;
+    // Clicking a handle while typing blurs the editor, which commits the
+    // text; the new node is added after that has settled.
+    if (editor.isOpen()) editor.close({ commit: true });
+    setTimeout(() => (kind === 'child' ? addChild(id) : addSibling(id)), 0);
     return;
   }
   if (event.target.closest('.node-badge')) {
@@ -909,6 +919,7 @@ function beginDrag(event, id) {
   if (id === doc.root.id) return; // the root anchors the map
   const origin = { x: event.clientX, y: event.clientY };
   let active = false;
+  let dropped = null;
 
   const move = (moveEvent) => {
     if (!active && Math.hypot(moveEvent.clientX - origin.x, moveEvent.clientY - origin.y) < 5) return;
@@ -917,22 +928,21 @@ function beginDrag(event, id) {
       state.draggingId = id;
       ui.toolbar.hidden = true;
     }
-    const target = hitTest(moveEvent.clientX, moveEvent.clientY, id);
-    state.dropTargetId = target?.id ?? null;
+    const target = dropTarget(moveEvent.clientX, moveEvent.clientY, id);
+    state.dropTargetId = target?.kind === 'child' ? target.box.id : null;
+    dropped = target;
     renderer.render(layout, state);
-    renderer.setDropIndicator(target ?? null);
+    renderer.setDropIndicator(target);
   };
 
   const up = () => {
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
-    const targetId = state.dropTargetId;
+    const target = dropped;
     state.draggingId = null;
     state.dropTargetId = null;
-    if (active && targetId && targetId !== id) {
-      const moved = doc.move(id, targetId);
-      if (!moved) showToast('A node cannot be moved inside itself');
-    }
+    dropped = null;
+    if (active && target) applyDrop(id, target);
     renderer.setDropIndicator(null);
     refresh();
   };
@@ -941,19 +951,57 @@ function beginDrag(event, id) {
   window.addEventListener('pointerup', up);
 }
 
-/** Node under the cursor, skipping the dragged node's own subtree. */
-function hitTest(clientX, clientY, excludeSubtreeOf) {
+/**
+ * Where a drag would land. Over the middle of a node makes the dragged node
+ * its child; near the top or bottom edge drops it above or below that node as
+ * a sibling, which is what lets you put a card anywhere, not just deeper.
+ *
+ * @returns {{kind:'child'|'before'|'after', box: object}|null}
+ */
+function dropTarget(clientX, clientY, draggingId) {
   const point = viewport.toWorld(clientX, clientY);
+  const margin = 14; // a little forgiveness around each box
   for (const box of layout.nodes) {
-    if (excludeSubtreeOf && doc.contains(excludeSubtreeOf, box.id)) continue;
-    if (point.x >= box.x && point.x <= box.x + box.w && point.y >= box.y && point.y <= box.y + box.h) {
-      return box;
-    }
+    if (draggingId && doc.contains(draggingId, box.id)) continue;
+    const inside = point.x >= box.x - margin && point.x <= box.x + box.w + margin
+      && point.y >= box.y - margin && point.y <= box.y + box.h + margin;
+    if (!inside) continue;
+    // The root has no siblings, so it can only take children.
+    if (box.isRoot) return { kind: 'child', box };
+    const fraction = (point.y - box.y) / box.h;
+    if (fraction < 0.3) return { kind: 'before', box };
+    if (fraction > 0.7) return { kind: 'after', box };
+    return { kind: 'child', box };
   }
   return null;
 }
 
+function applyDrop(id, target) {
+  const { kind, box } = target;
+  if (kind === 'child') {
+    if (box.id === id) return;
+    if (!doc.move(id, box.id)) showToast('A node cannot be moved inside itself');
+    return;
+  }
+  const parent = doc.parentOf(box.id);
+  if (!parent) return;
+  const index = doc.indexOf(box.id) + (kind === 'after' ? 1 : 0);
+  if (!doc.move(id, parent.id, index)) showToast('A node cannot be moved inside itself');
+}
+
 // --------------------------------------------------------------- keyboard
+
+function setPanMode(on) {
+  if (viewport.modifiers.spaceHeld === on) return;
+  viewport.modifiers.spaceHeld = on;
+  ui.canvas.classList.toggle('is-pan-ready', on);
+}
+
+document.addEventListener('keyup', (event) => {
+  if (event.code === 'Space' || event.key === ' ') setPanMode(false);
+});
+// A lost keyup (tab away mid-drag) would leave the canvas stuck in pan mode.
+window.addEventListener('blur', () => setPanMode(false));
 
 document.addEventListener('keydown', (event) => {
   const target = event.target;
@@ -997,6 +1045,13 @@ document.addEventListener('keydown', (event) => {
   }
   if (typing || editor.isOpen()) return;
 
+  // Hold space to pan, the way every canvas tool does it.
+  if (event.code === 'Space' || event.key === ' ') {
+    event.preventDefault(); // stop the page scrolling under us
+    setPanMode(true);
+    return;
+  }
+
   // Formatting works on the selected node without opening the editor.
   if (mod && state.selectedId && ['b', 'i', 'h', 'l'].includes(event.key.toLowerCase())) {
     event.preventDefault();
@@ -1028,7 +1083,7 @@ document.addEventListener('keydown', (event) => {
   const onCanvas = target === document.body || ui.canvas.contains(target);
   if (!onCanvas) return;
 
-  if (!state.selectedId && ['Tab', 'Enter', ' ', 'Delete', 'Backspace', 'F2'].includes(event.key)) {
+  if (!state.selectedId && ['Tab', 'Enter', '.', 'Delete', 'Backspace', 'F2'].includes(event.key)) {
     state.selectedId = doc.root.id;
   }
 
@@ -1050,7 +1105,7 @@ document.addEventListener('keydown', (event) => {
       event.preventDefault();
       deleteSelected();
       break;
-    case ' ':
+    case '.':
       event.preventDefault();
       if (state.selectedId) {
         doc.toggleCollapse(state.selectedId);

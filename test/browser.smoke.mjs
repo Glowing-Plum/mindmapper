@@ -163,6 +163,77 @@ try {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
 
+  // Holding space pans from anywhere, including from on top of a node.
+  const beforeSpace = await page.evaluate(() => ({ ...window.mindmapper.viewport.state }));
+  const overNode = await page.evaluate(() => {
+    const r = document.querySelector('.node:not(.is-root) .node-hit').getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  const outlineBeforeSpace = await outline();
+  await page.keyboard.down('Space');
+  await page.mouse.move(overNode.x, overNode.y);
+  await page.mouse.down();
+  await page.mouse.move(overNode.x + 110, overNode.y + 40, { steps: 8 });
+  await page.mouse.up();
+  await page.keyboard.up('Space');
+  await page.waitForTimeout(250);
+  const afterSpace = await page.evaluate(() => ({ ...window.mindmapper.viewport.state }));
+  check('space + drag over a node pans instead of moving it',
+    Math.abs(afterSpace.x - beforeSpace.x) > 60 && (await outline()) === outlineBeforeSpace);
+  check('releasing space leaves pan mode',
+    !(await page.evaluate(() => document.getElementById('canvas').classList.contains('is-pan-ready'))));
+
+  // The two handles on a node: one adds a child, one adds a sibling.
+  await clickNode('Launch checklist');
+  await page.waitForTimeout(250);
+  const handleId = await idOf('Launch checklist');
+  check('handles show on the selected node', await page.evaluate((id) =>
+    getComputedStyle(document.querySelector(`.node[data-id="${id}"] .node-handle-child`)).opacity === '1', handleId));
+  await page.click(`.node[data-id="${handleId}"] .node-handle-child`);
+  await page.waitForTimeout(250);
+  check('the side handle opens a new child for typing', await page.isVisible('.inline-editor'));
+  await page.keyboard.type('Sub item');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(350);
+  check('the child is created under that node',
+    /- Launch checklist\n\s+- Sub item/.test(await outline()));
+
+  const subId = await idOf('Sub item');
+  await page.dblclick(`.node[data-id="${subId}"] .node-hit`);
+  await page.waitForTimeout(250);
+  check('handles stay visible while typing', await page.evaluate((id) =>
+    getComputedStyle(document.querySelector(`.node[data-id="${id}"] .node-handle-sibling`)).opacity === '1', subId));
+  await page.click(`.node[data-id="${subId}"] .node-handle-sibling`, { force: true });
+  await page.waitForTimeout(300);
+  await page.keyboard.type('Next to it');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(350);
+  check('the lower handle adds a sibling', /- Sub item\n\s+- Next to it/.test(await outline()));
+
+  // A card can be dropped between siblings, not only onto a parent.
+  const dropBetween = await (async () => {
+    const from = await page.evaluate((id) => {
+      const r = document.querySelector(`.node[data-id="${id}"] .node-hit`).getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }, await idOf('Next to it'));
+    const to = await page.evaluate((id) => {
+      const r = document.querySelector(`.node[data-id="${id}"] .node-hit`).getBoundingClientRect();
+      return { x: r.left + r.width / 2, top: r.top };
+    }, await idOf('Landing page'));
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 10, from.y + 6, { steps: 3 });
+    await page.mouse.move(to.x, to.top + 3, { steps: 10 });
+    await page.waitForTimeout(150);
+    const line = await page.locator('.drop-line').count();
+    await page.mouse.up();
+    await page.waitForTimeout(350);
+    return line;
+  })();
+  check('dropping at a node edge shows an insertion line and places it there',
+    dropBetween === 1 && /- Next to it\n\s+- Landing page/.test(await outline()),
+    JSON.stringify((await outline()).split('\n').slice(-8)));
+
   // Dragging empty space still pans (the pan must not steal that double-click).
   const beforePan = await page.evaluate(() => ({ ...window.mindmapper.viewport.state }));
   await page.mouse.move(700, 800);
@@ -175,11 +246,11 @@ try {
 
   // Collapsing.
   await clickNode('Positioning');
-  await page.keyboard.press(' ');
+  await page.keyboard.press('.');
   await page.waitForTimeout(300);
   check('collapse hides the subtree', (await nodeCount()) < initial);
   check('collapsed node shows a count', /^\d+$/.test(await page.textContent('.node.is-collapsed .node-badge-text')));
-  await page.keyboard.press(' ');
+  await page.keyboard.press('.');
   await page.waitForTimeout(300);
 
   // Regenerating keeps formatting that the outline itself cannot carry.
