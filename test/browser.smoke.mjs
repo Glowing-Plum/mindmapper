@@ -62,6 +62,29 @@ try {
   check('edges drawn for every child', (await page.locator('.edge').count()) === initial - 1);
   check('export menu starts closed', await page.isHidden('.menu-list'));
 
+  // The top bar scrolls horizontally, which would clip an absolutely
+  // positioned dropdown; the menu must be visible and fully on screen.
+  await page.click('#btn-export');
+  await page.waitForTimeout(250);
+  const menuBox = await page.evaluate(() => {
+    const list = document.querySelector('.menu-list');
+    const rect = list.getBoundingClientRect();
+    const item = document.querySelector('[data-export="png"]').getBoundingClientRect();
+    return {
+      visible: !list.hidden && rect.height > 20,
+      insideWindow: rect.top >= 0 && rect.left >= 0
+        && rect.right <= window.innerWidth + 1 && rect.bottom <= window.innerHeight + 1,
+      itemClickable: item.width > 0 && item.bottom <= window.innerHeight,
+      atPoint: document.elementFromPoint(item.left + item.width / 2, item.top + item.height / 2)?.dataset?.export,
+    };
+  });
+  check('export menu options are visible and on screen',
+    menuBox.visible && menuBox.insideWindow && menuBox.itemClickable && menuBox.atPoint === 'png',
+    JSON.stringify(menuBox));
+  await page.keyboard.press('Escape');
+  await page.click('#canvas', { position: { x: 40, y: 400 } });
+  await page.waitForTimeout(200);
+
   // Add and name a node; one undo should take the whole thing back.
   await clickNode('Build');
   await page.keyboard.press('Tab');

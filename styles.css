@@ -191,10 +191,10 @@ select:hover,
 
 .menu { position: relative; }
 
+/* Fixed, not absolute: the top bar scrolls horizontally, and a scroll
+   container would clip this dropdown to its own height. Placed by JS. */
 .menu-list {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  position: fixed;
   min-width: 190px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -367,6 +367,8 @@ select:focus-visible,
   cursor: grab;
   touch-action: none;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none; /* no iOS magnifier/callout on a long press */
 }
 
 #canvas.is-panning { cursor: grabbing; }
@@ -565,8 +567,8 @@ select:focus-visible,
 
 .zoom-controls {
   position: absolute;
-  right: 16px;
-  bottom: 16px;
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   display: flex;
   gap: 6px;
   padding: 6px;
@@ -580,7 +582,7 @@ select:focus-visible,
 
 .sidebar-reveal {
   position: absolute;
-  left: 16px;
+  left: calc(16px + env(safe-area-inset-left, 0px));
   top: 16px;
   font: inherit;
   font-size: 13px;
@@ -646,18 +648,26 @@ kbd {
 }
 
 /* --------------------------------------------------------------- responsive */
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .topbar { gap: 10px; }
-  .zoom-controls { flex-wrap: wrap; max-width: 120px; justify-content: flex-end; }
   .sidebar {
     position: absolute;
     z-index: 15;
-    width: min(320px, 88vw);
+    width: min(340px, 88vw);
     flex-basis: auto;
     height: calc(100% - var(--topbar-h));
     box-shadow: var(--shadow-lg);
   }
-  .field, .topbar-group.optional { display: none; }
+  .brand span { display: none; } /* the mark alone carries it on a narrow bar */
+
+  /* The bar scrolls, but the things you reach for most must never scroll away. */
+  .topbar-group.right {
+    position: sticky;
+    right: 0;
+    padding-left: 28px;
+    /* Fade whatever scrolls underneath rather than slicing it mid-word. */
+    background: linear-gradient(to right, transparent, var(--surface) 26px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -766,6 +776,33 @@ dialog menu { gap: 8px; align-items: center; justify-content: space-between; }
 #confirm-dialog { max-width: 420px; }
 #confirm-dialog p { color: var(--text-soft); }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .node-toolbar { max-width: calc(100vw - 24px); flex-wrap: wrap; justify-content: center; }
+}
+
+
+/* --------------------------------------------------------- touch devices */
+@media (pointer: coarse) {
+  /* Comfortable finger targets without changing how anything reads. */
+  .btn,
+  .seg,
+  select { padding-top: 10px; padding-bottom: 10px; }
+
+  .btn.icon { width: 42px; }
+
+  .tool {
+    padding: 9px 11px;
+    font-size: 13.5px;
+  }
+
+  .tool.fmt { width: 36px; }
+
+  .swatch {
+    width: 22px;
+    height: 22px;
+  }
+
+  .node-toolbar { gap: 8px; padding: 8px; }
+
+  .version-row { padding: 14px 12px; }
 }
