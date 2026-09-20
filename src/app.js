@@ -1,15 +1,17 @@
 // Application glue: wires the document model, layout, renderer, viewport and
 // editor together, and owns the interaction state (selection, drag, editing).
 
-import { MindMapDoc, walk } from './model.js';
+import { MindMapDoc, carryFormatting, walk } from './model.js';
 import { parseOutline, toOutline } from './parser.js';
 import { computeLayout } from './layout.js';
 import { createRenderer } from './render.js';
 import { createViewport } from './viewport.js';
 import { createInlineEditor } from './editor.js';
-import { BRANCH_COLORS } from './palette.js';
+import { BRANCH_COLORS, HIGHLIGHTS } from './palette.js';
 import { SAMPLES, DEFAULT_SAMPLE } from './samples.js';
-import { clearState, loadState, saveState } from './storage.js';
+import {
+  clearState, clearVersions, getVersion, listVersions, loadState, pushVersion, relativeTime, saveState,
+} from './storage.js';
 import { copyText, download, markdownFor, slugify, toPngBlob, toSvgString } from './exporters.js';
 
 const el = (id) => document.getElementById(id);
@@ -22,15 +24,20 @@ const ui = {
   sidebar: el('sidebar'),
   toolbar: el('node-toolbar'),
   swatches: el('swatches'),
+  highlights: el('highlights'),
   toast: el('toast'),
   zoomLevel: el('btn-zoom-reset'),
   sampleSelect: el('sample-select'),
   help: el('help-dialog'),
+  history: el('history-dialog'),
+  versionList: el('version-list'),
+  confirm: el('confirm-dialog'),
 };
 
 const state = {
   selectedId: null,
   editingId: null,
+  editingLabelId: null,
   draggingId: null,
   dropTargetId: null,
   mode: 'both',
@@ -56,18 +63,18 @@ const viewport = createViewport(ui.canvas, renderer.scene, {
   },
 });
 editor = createInlineEditor(ui.wrap, {
-  onCommit: (id, text) => commitEdit(id, text),
-  onCancel: (id) => cancelEdit(id),
-  onInput: (kind, id) => {
-    if (kind === 'tab' && id) addChild(id);
-  },
+  onCommit: commitEdit,
+  onCancel: cancelEdit,
+  onChord: handleEditorChord,
 });
 
 // ------------------------------------------------------------------ render
 
 function refresh({ syncOutline = true } = {}) {
   layout = computeLayout(doc.root, { mode: state.mode });
-  state.editingId = editor?.editingId() ?? null;
+  const editing = editor?.editing();
+  state.editingId = editing?.kind === 'node' ? editing.id : null;
+  state.editingLabelId = editing?.kind === 'label' ? editing.edgeId : null;
   renderer.render(layout, state);
   renderer.setDropIndicator(state.dropTargetId ? layout.byId.get(state.dropTargetId) : null);
   positionToolbar();
@@ -92,29 +99,126 @@ function positionToolbar() {
   }
   const wrapRect = ui.wrap.getBoundingClientRect();
   const anchor = viewport.toScreen(box.cx, box.y);
-  const x = anchor.x - wrapRect.left;
-  const y = anchor.y - wrapRect.top - 10;
-  const offscreen = x < 40 || x > wrapRect.width - 40 || y < 44 || y > wrapRect.height;
-  ui.toolbar.hidden = offscreen;
-  if (offscreen) return;
+  const halfWidth = ui.toolbar.offsetWidth / 2 || 180;
+  const x = clamp(anchor.x - wrapRect.left, halfWidth + 8, wrapRect.width - halfWidth - 8);
+  const y = anchor.y - wrapRect.top - 12;
+  ui.toolbar.hidden = y < 50 || y > wrapRect.height;
+  if (ui.toolbar.hidden) return;
   ui.toolbar.style.left = `${x}px`;
   ui.toolbar.style.top = `${y}px`;
-  const node = doc.get(state.selectedId);
-  for (const swatch of ui.swatches.children) {
-    swatch.setAttribute('aria-pressed', String(Number(swatch.dataset.index) === node?.colorIndex));
-  }
-  ui.toolbar.querySelector('[data-act="delete"]').disabled = state.selectedId === doc.root.id;
+  syncToolbarState(doc.get(state.selectedId), box);
 }
 
-// ---------------------------------------------------------------- outline
+function syncToolbarState(node, box) {
+  if (!node) return;
+  ui.toolbar.querySelector('[data-act="bold"]').setAttribute('aria-pressed', String(Boolean(node.bold)));
+  ui.toolbar.querySelector('[data-act="italic"]').setAttribute('aria-pressed', String(Boolean(node.italic)));
+  for (const swatch of ui.highlights.children) {
+    swatch.setAttribute('aria-pressed', String((swatch.dataset.highlight || null) === (node.highlight ?? null)));
+  }
+  for (const swatch of ui.swatches.children) {
+    swatch.setAttribute('aria-pressed', String(Number(swatch.dataset.index) === node.colorIndex));
+  }
+  const labelButton = ui.toolbar.querySelector('[data-act="label"]');
+  labelButton.disabled = box.isRoot;
+  labelButton.textContent = node.edgeLabel ? 'Edit label' : 'Label line';
+  ui.toolbar.querySelector('[data-act="delete"]').disabled = box.isRoot;
+}
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+// ------------------------------------------------------- saving + history
 
 let saveTimer = null;
+let versionTimer = null;
+
 function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    saveState({ doc: doc.toJSON(), theme: state.theme, mode: state.mode });
+    const ok = saveState({ doc: doc.toJSON(), theme: state.theme, mode: state.mode });
+    if (!ok && !scheduleSave.warned) {
+      scheduleSave.warned = true;
+      showToast('This browser is blocking local storage — export to keep your work', 6000);
+    }
   }, 400);
+
+  // Versions settle a couple of seconds after you stop typing.
+  clearTimeout(versionTimer);
+  versionTimer = setTimeout(() => pushVersion(doc.toJSON()), 2500);
 }
+
+/** Pins the current state in history before something replaces it. */
+function checkpoint(label) {
+  pushVersion(doc.toJSON(), { label, force: true });
+}
+
+function renderVersions() {
+  const versions = listVersions();
+  const current = JSON.stringify(doc.toJSON());
+  ui.versionList.textContent = '';
+  for (const version of versions) {
+    const row = document.createElement('li');
+    row.className = 'version-row';
+    const isCurrent = version.data === current;
+    if (isCurrent) row.classList.add('is-current');
+
+    const main = document.createElement('div');
+    main.className = 'version-main';
+    const title = document.createElement('div');
+    title.className = 'version-title';
+    title.textContent = version.label || rootNameOf(version) || 'Edit';
+    const meta = document.createElement('div');
+    meta.className = 'version-meta';
+    meta.textContent = `${relativeTime(version.at)} · ${version.nodes} node${version.nodes === 1 ? '' : 's'}${isCurrent ? ' · current' : ''}`;
+    main.append(title, meta);
+
+    const restore = document.createElement('button');
+    restore.type = 'button';
+    restore.className = 'btn small';
+    restore.textContent = isCurrent ? 'Current' : 'Restore';
+    restore.disabled = isCurrent;
+    restore.addEventListener('click', () => restoreVersion(version.id));
+
+    row.append(main, restore);
+    ui.versionList.append(row);
+  }
+}
+
+function rootNameOf(version) {
+  try {
+    return JSON.parse(version.data)?.root?.text ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function restoreVersion(id) {
+  const data = getVersion(id);
+  if (!data) {
+    showToast('That version could not be read');
+    return;
+  }
+  checkpoint('Before restore');
+  const restored = MindMapDoc.fromJSON(data);
+  doc.replaceRoot(restored.root);
+  state.selectedId = null;
+  refresh();
+  fitMap();
+  ui.history.close();
+  showToast('Version restored — Ctrl+Z undoes this');
+}
+
+function confirmAction({ title, body, confirmLabel = 'Continue' }) {
+  return new Promise((resolve) => {
+    el('confirm-title').textContent = title;
+    el('confirm-body').textContent = body;
+    el('confirm-ok').textContent = confirmLabel;
+    ui.confirm.addEventListener('close', () => resolve(ui.confirm.returnValue === 'confirm'), { once: true });
+    ui.confirm.showModal();
+  });
+}
+
+// ---------------------------------------------------------------- outline
 
 function writeOutline() {
   if (document.activeElement === ui.outline && state.outlineDirty) return;
@@ -123,17 +227,31 @@ function writeOutline() {
   ui.outlineStatus.textContent = '';
 }
 
-function generateFromOutline() {
-  const root = parseOutline(ui.outline.value, { title: 'Mind map' });
+async function generateFromOutline() {
+  const source = ui.outline.value;
+  const existing = [...walk(doc.root)].length;
+  if (!source.trim() && existing > 1) {
+    const ok = await confirmAction({
+      title: 'Clear the whole map?',
+      body: `The outline is empty, so generating would remove all ${existing} nodes. A version is kept in History either way.`,
+      confirmLabel: 'Clear it',
+    });
+    if (!ok) return;
+  }
+
+  checkpoint('Before generate');
+  // The outline carries text only, so formatting is re-applied by matching
+  // nodes on their path: regenerating never silently drops your styling.
+  const root = carryFormatting(doc.root, parseOutline(source, { title: 'Mind map' }));
   doc.replaceRoot(root);
-  state.selectedId = root.id;
+  state.selectedId = null;
   state.outlineDirty = false;
   refresh();
   fitMap();
   const count = [...walk(root)].length;
   ui.outlineStatus.textContent = `${count} node${count === 1 ? '' : 's'}`;
   if (window.innerWidth < NARROW) setSidebar(false);
-  showToast(`Map generated — ${count} node${count === 1 ? '' : 's'}`);
+  showToast(`Map generated — ${count} node${count === 1 ? '' : 's'}. Ctrl+Z undoes this.`);
 }
 
 // -------------------------------------------------------------- selection
@@ -193,8 +311,7 @@ function enterChildren(box) {
   if (node.collapsed) {
     doc.toggleCollapse(node.id);
     refresh();
-    const reopened = layout.byId.get(box.id);
-    return reopened?.children[0] ?? null;
+    return layout.byId.get(box.id)?.children[0] ?? null;
   }
   return nearest(box.children, box.cy);
 }
@@ -213,42 +330,126 @@ function nearest(boxes, y) {
 
 // --------------------------------------------------------------- editing
 
+/** The world-space box for editing a node's text. */
+function nodeTarget(box) {
+  const textHeight = box.lines.length * box.lineHeight;
+  return {
+    kind: 'node',
+    id: box.id,
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: box.h,
+    fontSize: box.style.fontSize,
+    fontWeight: box.style.fontWeight,
+    italic: Boolean(box.style.italic),
+    lineHeight: box.lineHeight,
+    padX: box.style.padX,
+    padY: (box.h - textHeight) / 2,
+    radius: box.style.radius,
+    align: box.isRoot ? 'center' : 'left',
+    text: box.node.text,
+  };
+}
+
+/** The world-space box for editing a label on a connector. */
+function labelTarget(edge) {
+  const w = Math.max(130, (edge.label?.w ?? 0) + 40);
+  const h = 26;
+  return {
+    kind: 'label',
+    id: edge.to.id,
+    edgeId: edge.id,
+    x: edge.labelAnchor.x - w / 2,
+    y: edge.labelAnchor.y - h / 2,
+    w,
+    h,
+    fontSize: 12,
+    fontWeight: 500,
+    italic: false,
+    lineHeight: 16,
+    padX: 8,
+    padY: 5,
+    radius: 5,
+    align: 'center',
+    text: edge.to.node.edgeLabel ?? '',
+  };
+}
+
 function startEdit(id, { selectAll = true, isNew = false } = {}) {
   const box = layout?.byId.get(id);
   if (!box) return;
   if (isNew) state.newNodeId = id;
   state.editingId = id;
   renderer.render(layout, state);
-  editor.open(box, viewport, { selectAll });
+  editor.open(nodeTarget(box), viewport, { selectAll });
   ui.toolbar.hidden = true;
   viewport.ensureVisible(box, 90);
 }
 
-function commitEdit(id, text) {
-  const isNew = state.newNodeId === id;
+function startLabelEdit(nodeId = state.selectedId) {
+  const edge = layout?.edges.find((candidate) => candidate.to.id === nodeId);
+  if (!edge) {
+    showToast('The root has no incoming line to label');
+    return;
+  }
+  state.editingLabelId = edge.id;
+  renderer.render(layout, state);
+  editor.open(labelTarget(edge), viewport, { selectAll: true });
+  ui.toolbar.hidden = true;
+}
+
+function commitEdit(target, value) {
+  if (target.kind === 'label') {
+    state.editingLabelId = null;
+    doc.setEdgeLabel(target.id, value);
+    refresh();
+    ui.canvas.focus({ preventScroll: true });
+    return;
+  }
+  const isNew = state.newNodeId === target.id;
   state.newNodeId = null;
   state.editingId = null;
-  if (!text && isNew) {
-    const next = doc.remove(id);
+  if (!value && isNew) {
+    const next = doc.remove(target.id);
     state.selectedId = next?.id ?? doc.root.id;
     refresh();
     return;
   }
-  doc.setText(id, text || doc.get(id)?.text || 'Untitled', { amend: isNew });
+  doc.setText(target.id, value || doc.get(target.id)?.text || 'Untitled', { amend: isNew });
   refresh();
   ui.canvas.focus({ preventScroll: true });
 }
 
-function cancelEdit(id) {
-  const isNew = state.newNodeId === id;
+function cancelEdit(target) {
+  if (target.kind === 'label') {
+    state.editingLabelId = null;
+    refresh({ syncOutline: false });
+    return;
+  }
+  const isNew = state.newNodeId === target.id;
   state.newNodeId = null;
   state.editingId = null;
   if (isNew) {
-    const next = doc.remove(id);
+    const next = doc.remove(target.id);
     state.selectedId = next?.id ?? doc.root.id;
   }
   refresh();
   ui.canvas.focus({ preventScroll: true });
+}
+
+/** Formatting shortcuts and Tab pressed while the editor has focus. */
+function handleEditorChord(key, target) {
+  if (!target) return;
+  if (key === 'tab') {
+    addChild(target.id);
+    return;
+  }
+  if (target.kind !== 'node') return;
+  if (key === 'b') doc.toggleFormat(target.id, 'bold');
+  else if (key === 'i') doc.toggleFormat(target.id, 'italic');
+  else if (key === 'h') cycleHighlight(target.id);
+  refresh({ syncOutline: false });
 }
 
 function addChild(parentId = state.selectedId) {
@@ -271,9 +472,20 @@ function addSibling(id = state.selectedId) {
 
 function deleteSelected() {
   if (!state.selectedId || state.selectedId === doc.root.id) return;
+  const node = doc.get(state.selectedId);
+  const size = node ? 1 + [...walk(node)].length - 1 : 1;
   const next = doc.remove(state.selectedId);
   state.selectedId = next?.id ?? doc.root.id;
   refresh();
+  if (size > 3) showToast(`Deleted ${size} nodes — Ctrl+Z undoes this`);
+}
+
+function cycleHighlight(id = state.selectedId) {
+  const node = doc.get(id);
+  if (!node) return;
+  const order = [null, ...HIGHLIGHTS.map((entry) => entry.id)];
+  const next = order[(order.indexOf(node.highlight ?? null) + 1) % order.length];
+  doc.setHighlight(id, next);
 }
 
 // ------------------------------------------------------------ interaction
@@ -306,6 +518,12 @@ ui.canvas.addEventListener('pointerdown', (event) => {
 });
 
 ui.canvas.addEventListener('dblclick', (event) => {
+  const edgeId = event.target.closest('.edge-group, .edge-label')?.dataset.id;
+  if (edgeId) {
+    const edge = layout.edges.find((candidate) => candidate.id === edgeId);
+    if (edge) startLabelEdit(edge.to.id);
+    return;
+  }
   const id = nodeIdFromEvent(event);
   if (id) startEdit(id);
 });
@@ -351,10 +569,7 @@ function hitTest(clientX, clientY, excludeSubtreeOf) {
   const point = viewport.toWorld(clientX, clientY);
   for (const box of layout.nodes) {
     if (excludeSubtreeOf && doc.contains(excludeSubtreeOf, box.id)) continue;
-    if (
-      point.x >= box.x && point.x <= box.x + box.w &&
-      point.y >= box.y && point.y <= box.y + box.h
-    ) {
+    if (point.x >= box.x && point.x <= box.x + box.w && point.y >= box.y && point.y <= box.y + box.h) {
       return box;
     }
   }
@@ -373,7 +588,7 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     if (event.shiftKey) doc.redo();
     else doc.undo();
-    if (!doc.get(state.selectedId)) state.selectedId = doc.root.id;
+    if (!doc.get(state.selectedId)) state.selectedId = null;
     refresh();
     return;
   }
@@ -384,6 +599,21 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   if (typing || editor.isOpen()) return;
+
+  // Formatting works on the selected node without opening the editor.
+  if (mod && state.selectedId && ['b', 'i', 'h', 'l'].includes(event.key.toLowerCase())) {
+    event.preventDefault();
+    const key = event.key.toLowerCase();
+    if (key === 'b') doc.toggleFormat(state.selectedId, 'bold');
+    else if (key === 'i') doc.toggleFormat(state.selectedId, 'italic');
+    else if (key === 'h') cycleHighlight();
+    else if (key === 'l') {
+      startLabelEdit();
+      return;
+    }
+    refresh({ syncOutline: false });
+    return;
+  }
 
   if (event.key === '?' || (event.key === '/' && event.shiftKey)) {
     event.preventDefault();
@@ -485,7 +715,7 @@ function setSidebar(visible, { refit = true } = {}) {
   if (refit && layout) requestAnimationFrame(() => fitMap());
 }
 
-function showToast(message, duration = 2200) {
+function showToast(message, duration = 2600) {
   ui.toast.textContent = message;
   ui.toast.hidden = false;
   clearTimeout(showToast.timer);
@@ -551,6 +781,33 @@ function buildSwatches() {
     });
     ui.swatches.append(swatch);
   });
+
+  const none = document.createElement('button');
+  none.type = 'button';
+  none.className = 'swatch is-none';
+  none.title = 'No highlight';
+  none.setAttribute('aria-label', 'Remove highlight');
+  none.addEventListener('click', () => applyHighlight(null));
+  ui.highlights.append(none);
+
+  for (const entry of HIGHLIGHTS) {
+    const swatch = document.createElement('button');
+    swatch.type = 'button';
+    swatch.className = 'swatch';
+    swatch.dataset.highlight = entry.id;
+    swatch.style.background = `var(${entry.var})`;
+    swatch.title = `${entry.name} highlight`;
+    swatch.setAttribute('aria-label', `${entry.name} highlight`);
+    swatch.addEventListener('click', () => applyHighlight(entry.id));
+    ui.highlights.append(swatch);
+  }
+}
+
+function applyHighlight(id) {
+  if (!state.selectedId) return;
+  const node = doc.get(state.selectedId);
+  doc.setHighlight(state.selectedId, node?.highlight === id ? null : id);
+  refresh({ syncOutline: false });
 }
 
 function buildSampleSelect() {
@@ -570,16 +827,25 @@ function buildSampleSelect() {
 }
 
 function bindChrome() {
-  el('btn-new').addEventListener('click', () => {
-    const root = parseOutline('Central idea\n  - First branch\n  - Second branch');
-    doc.replaceRoot(root);
-    state.selectedId = root.id;
+  el('btn-new').addEventListener('click', async () => {
+    const existing = [...walk(doc.root)].length;
+    if (existing > 1) {
+      const ok = await confirmAction({
+        title: 'Start a new map?',
+        body: `This replaces the current map (${existing} nodes). A version is kept in History, and Ctrl+Z undoes it.`,
+        confirmLabel: 'New map',
+      });
+      if (!ok) return;
+    }
+    checkpoint('Before new map');
+    doc.replaceRoot(parseOutline('Central idea\n  - First branch\n  - Second branch'));
+    state.selectedId = null;
     refresh();
     fitMap();
   });
   el('btn-undo').addEventListener('click', () => {
     doc.undo();
-    if (!doc.get(state.selectedId)) state.selectedId = doc.root.id;
+    if (!doc.get(state.selectedId)) state.selectedId = null;
     refresh();
   });
   el('btn-redo').addEventListener('click', () => {
@@ -610,6 +876,21 @@ function bindChrome() {
 
   el('btn-theme').addEventListener('click', () => applyTheme(state.theme === 'dark' ? 'light' : 'dark'));
   el('btn-help').addEventListener('click', () => ui.help.showModal());
+  el('btn-history').addEventListener('click', () => {
+    pushVersion(doc.toJSON()); // make sure the live state is represented
+    renderVersions();
+    ui.history.showModal();
+  });
+  el('btn-clear-history').addEventListener('click', async () => {
+    const ok = await confirmAction({
+      title: 'Clear version history?',
+      body: 'Saved versions are removed from this browser. The map you are working on is not affected.',
+      confirmLabel: 'Clear history',
+    });
+    if (!ok) return;
+    clearVersions();
+    renderVersions();
+  });
 
   el('btn-zoom-in').addEventListener('click', () => viewport.zoomAround(1.2));
   el('btn-zoom-out').addEventListener('click', () => viewport.zoomAround(1 / 1.2));
@@ -621,6 +902,10 @@ function bindChrome() {
 
   const menu = el('export-menu');
   const list = menu.querySelector('.menu-list');
+  const closeMenu = () => {
+    list.hidden = true;
+    el('btn-export').setAttribute('aria-expanded', 'false');
+  };
   el('btn-export').addEventListener('click', (event) => {
     event.stopPropagation();
     list.hidden = !list.hidden;
@@ -629,23 +914,24 @@ function bindChrome() {
   list.addEventListener('click', (event) => {
     const kind = event.target.dataset?.export;
     if (!kind) return;
-    list.hidden = true;
-    el('btn-export').setAttribute('aria-expanded', 'false');
+    closeMenu();
     exportAs(kind);
   });
   document.addEventListener('click', (event) => {
-    if (!menu.contains(event.target)) {
-      list.hidden = true;
-      el('btn-export').setAttribute('aria-expanded', 'false');
-    }
+    if (!menu.contains(event.target)) closeMenu();
   });
 
   ui.toolbar.addEventListener('click', (event) => {
     const act = event.target.closest('[data-act]')?.dataset.act;
-    if (!act) return;
+    if (!act || !state.selectedId) return;
     if (act === 'child') addChild();
     else if (act === 'sibling') addSibling();
     else if (act === 'delete') deleteSelected();
+    else if (act === 'label') startLabelEdit();
+    else if (act === 'bold' || act === 'italic') {
+      doc.toggleFormat(state.selectedId, act);
+      refresh({ syncOutline: false });
+    }
   });
 
   window.addEventListener('resize', () => {
@@ -655,6 +941,7 @@ function bindChrome() {
 
   window.addEventListener('beforeunload', () => {
     saveState({ doc: doc.toJSON(), theme: state.theme, mode: state.mode });
+    pushVersion(doc.toJSON());
   });
 }
 
@@ -670,6 +957,7 @@ function boot() {
   ui.outline.value = toOutline(doc.root);
   refresh();
   fitMap({ animate: false });
+  pushVersion(doc.toJSON(), { label: 'Opened', force: true });
   if (!saved) showToast('Press ? for shortcuts');
 }
 

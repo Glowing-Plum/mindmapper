@@ -1,16 +1,31 @@
-// Branch colours. Each top-level branch claims one and its descendants inherit
-// it, which is what gives a Whimsical map its "rivers of colour" look.
+// Colour lives in the connectors, the way Whimsical does it: one hue per
+// top-level branch, inherited down the branch, with the text left near-black so
+// it stays the most legible thing on the canvas.
 export const BRANCH_COLORS = [
-  { name: 'Indigo', stroke: '#6366f1' },
-  { name: 'Emerald', stroke: '#10b981' },
-  { name: 'Amber', stroke: '#f59e0b' },
-  { name: 'Rose', stroke: '#f43f5e' },
-  { name: 'Violet', stroke: '#a855f7' },
-  { name: 'Sky', stroke: '#0ea5e9' },
-  { name: 'Lime', stroke: '#65a30d' },
-  { name: 'Orange', stroke: '#fb923c' },
+  { name: 'Blue', stroke: '#2f80ed' },
+  { name: 'Magenta', stroke: '#c94fc9' },
+  { name: 'Emerald', stroke: '#12a06f' },
+  { name: 'Amber', stroke: '#e0910a' },
+  { name: 'Rose', stroke: '#e5484d' },
+  { name: 'Violet', stroke: '#8b5cf6' },
+  { name: 'Teal', stroke: '#0e9cb5' },
+  { name: 'Lime', stroke: '#67a80e' },
 ];
 
 export function branchColor(index) {
-  return BRANCH_COLORS[((index % BRANCH_COLORS.length) + BRANCH_COLORS.length) % BRANCH_COLORS.length];
+  const { length } = BRANCH_COLORS;
+  return BRANCH_COLORS[((index % length) + length) % length];
+}
+
+// Text highlights. The values are CSS custom properties so each theme can pick
+// a tint that keeps dark text readable.
+export const HIGHLIGHTS = [
+  { id: 'yellow', name: 'Yellow', var: '--hl-yellow' },
+  { id: 'green', name: 'Green', var: '--hl-green' },
+  { id: 'blue', name: 'Blue', var: '--hl-blue' },
+  { id: 'pink', name: 'Pink', var: '--hl-pink' },
+];
+
+export function highlightVar(id) {
+  return HIGHLIGHTS.find((entry) => entry.id === id)?.var ?? null;
 }

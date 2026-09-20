@@ -15,22 +15,30 @@ function cssVars(names) {
 }
 
 function exportStylesheet() {
-  const v = cssVars(['--surface', '--root-bg', '--root-text', '--text', '--text-soft', '--canvas-bg']);
+  const v = cssVars([
+    '--surface', '--root-bg', '--root-text', '--text', '--text-soft', '--canvas-bg',
+    '--hl-yellow', '--hl-green', '--hl-blue', '--hl-pink',
+  ]);
   return `
-    .layer-nodes text { font-family: ${FONT_STACK}; }
-    .node-ring { fill: none; stroke: none; }
-    .node-base { fill: ${v['--surface']}; stroke-width: 1.5; }
-    .node-tint { fill: none; fill-opacity: 0.16; stroke: none; }
-    .node[data-depth="1"] .node-tint { fill-opacity: 0.18; }
-    .node[data-depth="2"] .node-tint { fill-opacity: 0.06; }
+    :root {
+      --hl-yellow: ${v['--hl-yellow']};
+      --hl-green: ${v['--hl-green']};
+      --hl-blue: ${v['--hl-blue']};
+      --hl-pink: ${v['--hl-pink']};
+    }
+    text { font-family: ${FONT_STACK}; }
+    .node-hit { fill: none; stroke: none; }
+    .node-card { fill: ${v['--surface']}; stroke: none; }
     .node-text { fill: ${v['--text']}; }
-    .node.is-root .node-base { fill: ${v['--root-bg']}; stroke: none; }
-    .node.is-root .node-text { fill: ${v['--root-text']}; }
+    .node.is-root .node-text { fill: ${v['--text']}; }
     .node-badge { display: none; }
     .node.is-collapsed .node-badge { display: inline; }
     .node-badge-circle { fill: ${v['--surface']}; stroke: var(--badge-color); stroke-width: 1.5; }
-    .node-badge-text { fill: var(--badge-color); font-size: 11px; font-weight: 600; text-anchor: middle; font-family: ${FONT_STACK}; }
+    .node-badge-text { fill: var(--badge-color); font-size: 11px; font-weight: 600; text-anchor: middle; }
     .edge { fill: none; stroke-linecap: round; }
+    .edge-hit { display: none; }
+    .edge-label-bg { fill: ${v['--canvas-bg']}; stroke: none; }
+    .edge-label-text { fill: ${v['--text-soft']}; font-size: 12px; font-weight: 500; text-anchor: middle; }
   `;
 }
 
@@ -58,7 +66,7 @@ export function toSvgString(renderer, bounds, { background = true } = {}) {
 
   const scene = renderer.scene.cloneNode(true);
   scene.removeAttribute('transform');
-  for (const el of scene.querySelectorAll('.layer-overlay, .inline-editor, .is-selected .node-ring')) el.remove();
+  for (const el of scene.querySelectorAll('.layer-overlay, .inline-editor, .edge-hit')) el.remove();
   for (const el of scene.querySelectorAll('.node')) {
     el.classList.remove('is-selected', 'is-editing', 'is-drop-target', 'is-dragging', 'is-entering');
   }

@@ -139,8 +139,21 @@ export function createViewport(svg, scene, { onChange } = {}) {
   );
 
   function beginPan(event) {
-    panning = { x: event.clientX, y: event.clientY };
+    // Pending until the pointer actually moves: capturing straight away would
+    // swallow the second half of a double-click on a line or a label.
+    panning = { x: event.clientX, y: event.clientY, active: false, pointerId: event.pointerId };
+  }
+
+  function activatePan() {
+    panning.active = true;
     svg.classList.add('is-panning');
+    if (panning.pointerId !== undefined) {
+      try {
+        svg.setPointerCapture(panning.pointerId);
+      } catch {
+        /* the pointer may already be gone */
+      }
+    }
   }
 
   svg.addEventListener('pointerdown', (event) => {
@@ -153,10 +166,7 @@ export function createViewport(svg, scene, { onChange } = {}) {
     }
     const onEmptySpace = !event.target.closest('.node');
     const wantsPan = event.button === 1 || (event.button === 0 && onEmptySpace);
-    if (wantsPan) {
-      beginPan(event);
-      svg.setPointerCapture(event.pointerId);
-    }
+    if (wantsPan) beginPan(event);
   });
 
   svg.addEventListener('pointermove', (event) => {
@@ -170,8 +180,15 @@ export function createViewport(svg, scene, { onChange } = {}) {
       return;
     }
     if (!panning) return;
-    panBy(event.clientX - panning.x, event.clientY - panning.y);
-    panning = { x: event.clientX, y: event.clientY };
+    const dx = event.clientX - panning.x;
+    const dy = event.clientY - panning.y;
+    if (!panning.active) {
+      if (Math.hypot(dx, dy) < 3) return; // still a click, not a drag
+      activatePan();
+    }
+    panBy(dx, dy);
+    panning.x = event.clientX;
+    panning.y = event.clientY;
   });
 
   const endPointer = (event) => {

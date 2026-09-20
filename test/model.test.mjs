@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MindMapDoc, countDescendants, walk } from '../src/model.js';
+import { MindMapDoc, carryFormatting, countDescendants, walk } from '../src/model.js';
 import { parseOutline } from '../src/parser.js';
 
 const docFrom = (outline) => new MindMapDoc(parseOutline(outline));
@@ -149,4 +149,73 @@ test('amend folds an edit into the previous history entry', () => {
   assert.deepEqual(texts(doc.root), ['Named on creation']);
   doc.undo();
   assert.deepEqual(texts(doc.root), [], 'one undo removes the node and its name');
+});
+
+test('formatting and edge labels are stored and serialised', () => {
+  const doc = docFrom('Root\n  - A');
+  const a = doc.root.children[0];
+  doc.toggleFormat(a.id, 'bold');
+  doc.toggleFormat(a.id, 'italic');
+  doc.setHighlight(a.id, 'yellow');
+  doc.setEdgeLabel(a.id, '  leads to  ');
+  assert.equal(a.bold, true);
+  assert.equal(a.italic, true);
+  assert.equal(a.highlight, 'yellow');
+  assert.equal(a.edgeLabel, 'leads to', 'labels are trimmed');
+
+  const restored = MindMapDoc.fromJSON(JSON.parse(JSON.stringify(doc.toJSON())));
+  const copy = restored.root.children[0];
+  assert.deepEqual(
+    [copy.bold, copy.italic, copy.highlight, copy.edgeLabel],
+    [true, true, 'yellow', 'leads to'],
+  );
+
+  doc.toggleFormat(a.id, 'bold');
+  assert.equal(a.bold, false, 'bold toggles back off');
+});
+
+test('the root cannot carry an edge label, and formatting is undoable', () => {
+  const doc = docFrom('Root\n  - A');
+  assert.equal(doc.setEdgeLabel(doc.root.id, 'x'), null);
+  doc.toggleFormat(doc.root.children[0].id, 'bold');
+  doc.undo();
+  assert.equal(doc.root.children[0].bold, false);
+});
+
+test('regenerating from an outline carries formatting across', () => {
+  const doc = docFrom('Root\n  - Keep\n    - Deep\n  - Drop');
+  const keep = doc.root.children[0];
+  doc.toggleFormat(keep.id, 'bold');
+  doc.setHighlight(keep.id, 'yellow');
+  doc.setEdgeLabel(keep.id, 'because');
+  doc.setColor(keep.id, 4);
+  doc.toggleCollapse(keep.id);
+
+  // A fresh parse of the same outline plus one new node.
+  const rebuilt = parseOutline('Root\n  - Keep\n    - Deep\n  - Drop\n  - Added');
+  carryFormatting(doc.root, rebuilt);
+
+  const carried = rebuilt.children[0];
+  assert.deepEqual(
+    [carried.bold, carried.highlight, carried.edgeLabel, carried.colorIndex, carried.collapsed],
+    [true, 'yellow', 'because', 4, true],
+  );
+  const added = rebuilt.children[2];
+  assert.deepEqual([added.bold, added.highlight, added.edgeLabel], [false, null, '']);
+});
+
+test('carried formatting matches repeated labels in order', () => {
+  const source = parseOutline('Root\n  - A\n    - Same\n  - B\n    - Same');
+  source.children[0].children[0].highlight = 'green';
+  source.children[1].children[0].highlight = 'pink';
+  const rebuilt = carryFormatting(source, parseOutline('Root\n  - A\n    - Same\n  - B\n    - Same'));
+  assert.equal(rebuilt.children[0].children[0].highlight, 'green');
+  assert.equal(rebuilt.children[1].children[0].highlight, 'pink');
+});
+
+test('a collapsed node whose children are gone does not stay collapsed', () => {
+  const doc = docFrom('Root\n  - A\n    - A1');
+  doc.toggleCollapse(doc.root.children[0].id);
+  const rebuilt = carryFormatting(doc.root, parseOutline('Root\n  - A'));
+  assert.equal(rebuilt.children[0].collapsed, false);
 });

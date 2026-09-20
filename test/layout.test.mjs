@@ -102,16 +102,43 @@ test('collapsed nodes hide their subtree and report the hidden count', () => {
   assert.equal(byId.get(a.id).collapsed, true);
 });
 
-test('nodes in the same column share an edge, columns are ordered by depth', () => {
+test('siblings align with each other and with nothing else', () => {
   const { nodes } = layoutOf(bigOutline);
-  const rightDepth1 = nodes.filter((box) => box.side === 1 && box.depth === 1);
-  const rightDepth2 = nodes.filter((box) => box.side === 1 && box.depth === 2);
-  assert.ok(rightDepth1.length > 1);
-  assert.equal(new Set(rightDepth1.map((box) => box.x)).size, 1, 'a right column is left-aligned');
-  assert.ok(Math.min(...rightDepth2.map((b) => b.x)) > Math.max(...rightDepth1.map((b) => b.x + b.w)));
+  const byParent = new Map();
+  for (const box of nodes) {
+    if (!box.parent) continue;
+    // The root's children fan out both ways, so a side is part of the group.
+    const key = `${box.parent.id}|${box.side}`;
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key).push(box);
+  }
+  for (const siblings of byParent.values()) {
+    const edges = new Set(siblings.map((box) => (box.side === 1 ? box.x : box.x + box.w)));
+    assert.equal(edges.size, 1, 'siblings share a leading edge');
+  }
+});
 
-  const leftDepth1 = nodes.filter((box) => box.side === -1 && box.depth === 1);
-  assert.equal(new Set(leftDepth1.map((box) => box.x + box.w)).size, 1, 'a left column is right-aligned');
+test('children hang off their own parent, not a shared depth column', () => {
+  // Two branches whose depth-1 nodes differ in width must not line their
+  // depth-2 nodes up with each other: that would imply a relationship.
+  const root = parseOutline('Root\n  - Short\n    - A\n  - A much longer branch label\n    - B');
+  const { byId } = computeLayout(root, { mode: 'right' });
+  const a = byId.get(root.children[0].children[0].id);
+  const b = byId.get(root.children[1].children[0].id);
+  assert.notEqual(a.x, b.x, 'cousins under differently sized parents must not align');
+  assert.equal(a.x, byId.get(root.children[0].id).x + byId.get(root.children[0].id).w + 44);
+});
+
+test('a child sits immediately right of its parent on the left side too', () => {
+  const { nodes, root } = layoutOf(bigOutline);
+  for (const box of nodes) {
+    if (!box.parent) continue;
+    const gap = box.side === 1
+      ? box.x - (box.parent.x + box.parent.w)
+      : box.parent.x - (box.x + box.w);
+    assert.ok(gap >= 44 - 0.5, `${box.node.text} sits ${gap} from its parent`);
+  }
+  assert.ok(root.children.length > 0);
 });
 
 test('every edge connects a parent to a child and starts at the parent border', () => {
@@ -119,7 +146,9 @@ test('every edge connects a parent to a child and starts at the parent border', 
   assert.equal(edges.length, nodes.length - 1);
   for (const edge of edges) {
     assert.ok(edge.path.startsWith('M '));
-    assert.ok(edge.path.includes(' C '));
+    // A child level with its parent gets a straight line; anything else curves.
+    const aligned = Math.abs(edge.to.cy - edge.from.cy) < 0.5;
+    assert.ok(aligned ? edge.path.includes(' L ') : edge.path.includes(' C '));
     const [, x, y] = edge.path.match(/^M (-?[\d.]+) (-?[\d.]+)/).map(Number);
     const expectedX = edge.to.side === 1 ? edge.from.x + edge.from.w : edge.from.x;
     assert.ok(Math.abs(x - expectedX) < 0.6);
@@ -181,7 +210,7 @@ test('layout is deterministic for the same input', () => {
 test('a custom measurer is honoured', () => {
   const measure = () => ({ width: 100, height: 20, lines: ['fixed'] });
   const { nodes } = computeLayout(parseOutline(bigOutline), { measure });
-  assert.equal(new Set(nodes.map((box) => box.w)).size, 3, 'one width per depth style');
+  assert.equal(new Set(nodes.map((box) => box.w)).size, 2, 'one width per depth style');
   assertNoOverlaps(nodes);
 });
 
@@ -199,4 +228,75 @@ test('walk order matches the rendered node order', () => {
   const actual = nodes.map((box) => box.node.text);
   assert.equal(actual.length, expected.length);
   assert.deepEqual(new Set(actual), new Set(expected));
+});
+
+test('the curve resolves near the parent, then runs straight to the child', () => {
+  const root = parseOutline('Root\n  - Branch one\n  - Branch two');
+  const { edges } = computeLayout(root, { mode: 'right' });
+  const curved = edges.find((edge) => edge.path.includes(' C '));
+  const [, , , c1x, , c2x] = curved.path.match(/M (-?[\d.]+) (-?[\d.]+) C (-?[\d.]+) (-?[\d.]+), (-?[\d.]+) (-?[\d.]+), (-?[\d.]+) (-?[\d.]+)/).map(Number);
+  const [, startX] = curved.path.match(/^M (-?[\d.]+)/).map(Number);
+  const endX = curved.to.x;
+  // Both control points sit in the first half of the run, so the line has
+  // flattened out well before it reaches the child.
+  assert.ok(c1x - startX <= (endX - startX) * 0.5);
+  assert.ok(c2x - startX <= (endX - startX) * 0.8);
+});
+
+test('every edge carries a label anchor on its straight run', () => {
+  const { edges } = layoutOf(bigOutline);
+  for (const edge of edges) {
+    assert.ok(Number.isFinite(edge.labelAnchor.x) && Number.isFinite(edge.labelAnchor.y));
+    assert.equal(edge.labelAnchor.y, edge.to.y + edge.to.h / 2, 'the anchor sits on the line into the child');
+    const [low, high] = [edge.from.x, edge.to.x].sort((a, b) => a - b);
+    assert.ok(edge.labelAnchor.x >= low - 1 && edge.labelAnchor.x <= high + edge.to.w + 1);
+    assert.equal(edge.label, null, 'unlabelled edges carry no label box');
+  }
+});
+
+test('a labelled line reserves room for its label', () => {
+  const root = parseOutline('Root\n  - Child');
+  const plain = computeLayout(root, { mode: 'right' });
+  const plainGap = plain.byId.get(root.children[0].id).x;
+
+  root.children[0].edgeLabel = 'leads to a much longer explanation';
+  const labelled = computeLayout(root, { mode: 'right' });
+  const box = labelled.byId.get(root.children[0].id);
+  const edge = labelled.edges[0];
+  assert.ok(box.x > plainGap, 'the column moves out to make room');
+  assert.ok(edge.label, 'the edge carries a label box');
+  assert.ok(edge.label.w + 26 <= box.x - (labelled.root.x + labelled.root.w) + 1);
+  assert.ok(labelled.bounds.width >= plain.bounds.width);
+});
+
+test('siblings share a column sized for the widest label among them', () => {
+  const root = parseOutline('Root\n  - One\n  - Two');
+  root.children[1].edgeLabel = 'a long label on the second line';
+  const { byId } = computeLayout(root, { mode: 'right' });
+  assert.equal(byId.get(root.children[0].id).x, byId.get(root.children[1].id).x);
+});
+
+test('bold and italic change the measured box', () => {
+  const root = parseOutline('Root\n  - Formatted');
+  const plain = computeLayout(root).byId.get(root.children[0].id);
+  root.children[0].bold = true;
+  const bold = computeLayout(root).byId.get(root.children[0].id);
+  assert.ok(bold.w > plain.w, 'bold text is wider');
+  root.children[0].italic = true;
+  assert.equal(computeLayout(root).byId.get(root.children[0].id).style.italic, true);
+});
+
+test('a highlight is carried through to the rendered box', () => {
+  const root = parseOutline('Root\n  - Marked');
+  root.children[0].highlight = 'yellow';
+  assert.equal(computeLayout(root).byId.get(root.children[0].id).highlight, 'yellow');
+});
+
+test('bounds include edge labels that stick out', () => {
+  const root = parseOutline('Root\n  - Child');
+  root.children[0].edgeLabel = 'label';
+  const { bounds, edges } = computeLayout(root, { mode: 'right' });
+  const label = edges[0].label;
+  assert.ok(label.x - label.w / 2 >= bounds.x);
+  assert.ok(label.x + label.w / 2 <= bounds.x + bounds.width);
 });
