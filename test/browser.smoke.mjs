@@ -210,6 +210,31 @@ try {
   await page.waitForTimeout(350);
   check('the lower handle adds a sibling', /- Sub item\n\s+- Next to it/.test(await outline()));
 
+  // The collapse button sits outboard of the child dot, and still works there.
+  await clickNode('Positioning');
+  await page.waitForTimeout(250);
+  const controls = await page.evaluate(() => {
+    const id = [...document.querySelectorAll('.node')]
+      .find((n) => n.textContent.startsWith('Positioning')).dataset.id;
+    const node = document.querySelector(`.node[data-id="${id}"] .node-hit`).getBoundingClientRect();
+    const dot = document.querySelector(`.node[data-id="${id}"] .node-handle-child .node-handle-dot`).getBoundingClientRect();
+    const badge = document.querySelector(`.node[data-id="${id}"] .node-badge-circle`).getBoundingClientRect();
+    const side = dot.left > node.right ? 1 : -1;
+    const from = (r) => (side === 1 ? r.left - node.right : node.left - r.right);
+    return { dotAt: from(dot), badgeAt: from(badge), overlap: side === 1
+      ? badge.left < dot.right : badge.right > dot.left };
+  });
+  check('the collapse button sits past the child dot, clear of it',
+    controls.badgeAt > controls.dotAt && !controls.overlap, JSON.stringify(controls));
+
+  const beforeCollapse = await nodeCount();
+  await page.click('.node.is-selected .node-badge');
+  await page.waitForTimeout(400);
+  check('the collapse button still works where it now sits',
+    (await nodeCount()) < beforeCollapse);
+  await page.click('.node.is-selected .node-badge');
+  await page.waitForTimeout(400);
+
   // A card can be dropped between siblings, not only onto a parent.
   const dropBetween = await (async () => {
     const from = await page.evaluate((id) => {

@@ -150,7 +150,9 @@ always a faithful text version of what you see.
 
 **Two handles** appear on a node while it is selected or being typed in: the
 one out to the side adds a child, the one underneath adds a sibling. They take
-the colour of the branch they would extend.
+the colour of the branch they would extend. Further out again sits the button
+that closes the branch — and once closed, it becomes the bubble counting what
+is tucked away.
 
 **Drag a card anywhere.** Dropping on the middle of a node adds it to that
 node's children; dropping near a node's top or bottom edge places it directly
