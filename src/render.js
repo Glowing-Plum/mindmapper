@@ -102,6 +102,24 @@ export function createRenderer(svg) {
     return entry;
   }
 
+  /**
+   * Puts the handles and the close-branch button around a box. `rect` is the
+   * live size while a node is being typed into, which is wider than the box
+   * the layout last measured -- without it the child dot ends up underneath
+   * the editor and cannot be seen or reached.
+   */
+  function placeControls(entry, box, rect = null) {
+    const dx = rect ? rect.x - box.x : 0;
+    const dy = rect ? rect.y - box.y : 0;
+    const w = rect ? rect.w : box.w;
+    const h = rect ? rect.h : box.h;
+    const outward = (gap) => (box.side === -1 ? dx - gap : dx + w + gap);
+
+    entry.childHandle.setAttribute('transform', `translate(${outward(HANDLE_GAP)}, ${dy + h / 2})`);
+    entry.siblingHandle.setAttribute('transform', `translate(${dx + w / 2}, ${dy + h + HANDLE_GAP})`);
+    entry.badge.setAttribute('transform', `translate(${outward(BADGE_GAP)}, ${dy + h / 2})`);
+  }
+
   function renderText(text, box) {
     const { style } = box;
     const key = [
@@ -240,10 +258,21 @@ export function createRenderer(svg) {
     );
   }
 
+  /**
+   * Follows the editor while a node is being typed into. Pass null when the
+   * edit ends to put the controls back on the laid-out box.
+   */
+  function setEditingBox(id, rect) {
+    const entry = nodeEls.get(id);
+    const box = lastLayout?.byId.get(id);
+    if (entry && box) placeControls(entry, box, rect);
+  }
+
   return {
     svg,
     scene,
     render,
+    setEditingBox,
     setDropIndicator,
     getLayout: () => lastLayout,
     getNodeElement: (id) => nodeEls.get(id)?.group ?? null,

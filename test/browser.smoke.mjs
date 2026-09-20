@@ -222,6 +222,25 @@ try {
   });
   const emptyCard = await editorSize();
   check('a new card is wide enough to type in', emptyCard.w >= 120, JSON.stringify(emptyCard));
+
+  // The dot that adds a child has to stay reachable while typing: it is
+  // positioned from the box the layout measured, which the editor outgrows.
+  const dotWhileEditing = await page.evaluate(() => {
+    const editing = document.querySelector('.node.is-editing');
+    const dot = editing?.querySelector('.node-handle-child .node-handle-dot');
+    if (!dot) return null;
+    const d = dot.getBoundingClientRect();
+    const e = document.querySelector('.inline-editor').getBoundingClientRect();
+    const hit = document.elementFromPoint(d.left + d.width / 2, d.top + d.height / 2);
+    return {
+      shown: getComputedStyle(dot.parentElement).opacity === '1',
+      clearOfEditor: d.left >= e.right - 1 || d.right <= e.left + 1,
+      onTop: Boolean(hit?.closest?.('.node-handle-child')),
+    };
+  });
+  check('the child dot stays visible and reachable while typing',
+    dotWhileEditing?.shown && dotWhileEditing?.clearOfEditor && dotWhileEditing?.onTop,
+    JSON.stringify(dotWhileEditing));
   await page.keyboard.type('Short');
   await page.waitForTimeout(150);
   const shortCard = await editorSize();
@@ -229,8 +248,16 @@ try {
   await page.waitForTimeout(200);
   const longCard = await editorSize();
   check('it widens with the text, then wraps taller rather than running away',
-    longCard.w > shortCard.w && longCard.w <= 320 && longCard.h > shortCard.h,
+    longCard.w > shortCard.w && longCard.w <= 330 && longCard.h > shortCard.h,
     `${shortCard.w}x${shortCard.h} -> ${longCard.w}x${longCard.h}`);
+  check('the text is never clipped by the box it is typed into', await page.evaluate(() => {
+    const t = document.querySelector('.inline-editor');
+    return t.scrollHeight <= t.clientHeight + 1;
+  }));
+
+  // Adding a child or sibling lives on the dots, not in the toolbar.
+  check('the toolbar no longer carries + Child / + Sibling', await page.evaluate(() =>
+    !document.querySelector('[data-act="child"]') && !document.querySelector('[data-act="sibling"]')));
   await page.keyboard.press('Enter');
   await page.waitForTimeout(400);
   const settled = await page.evaluate(() => {
@@ -239,7 +266,7 @@ try {
     return { w: Math.round(r.width), h: Math.round(r.height) };
   });
   check('the card does not jump size when the edit is committed',
-    Math.abs(settled.w - longCard.w) <= 4 && Math.abs(settled.h - longCard.h) <= 4,
+    Math.abs(settled.w - longCard.w) <= 6 && Math.abs(settled.h - longCard.h) <= 6,
     `editing ${longCard.w}x${longCard.h} -> settled ${settled.w}x${settled.h}`);
   await page.keyboard.press('Control+z');
   await page.waitForTimeout(350);

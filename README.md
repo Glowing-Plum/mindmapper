@@ -157,8 +157,9 @@ wraps at, then grows taller — and it grows away from the side it is anchored
 on, so the words under your cursor stay put. The size while you type is the
 size it settles at, so nothing jumps when you finish.
 
-**Two handles** appear on a node while it is selected or being typed in: the
-one out to the side adds a child, the one underneath adds a sibling. They take
+**Two handles** are how you branch off a card: the one out to the side adds a
+child, the one underneath adds a sibling. They show while a node is selected or
+being typed in, and they follow the card as it grows under your cursor. They take
 the colour of the branch they would extend. Further out again sits the button
 that closes the branch — and once closed, it becomes the bubble counting what
 is tucked away.

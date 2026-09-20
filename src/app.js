@@ -107,6 +107,10 @@ editor = createInlineEditor(ui.wrap, {
   onCommit: commitEdit,
   onCancel: cancelEdit,
   onChord: handleEditorChord,
+  // Keep the dots alongside the card as it grows under the cursor.
+  onResize: (target, rect) => {
+    if (target.kind === 'node') renderer.setEditingBox(target.id, rect);
+  },
 });
 
 // ------------------------------------------------------------------ render
@@ -1660,9 +1664,8 @@ function bindChrome() {
   ui.toolbar.addEventListener('click', (event) => {
     const act = event.target.closest('[data-act]')?.dataset.act;
     if (!act || !state.selectedId) return;
-    if (act === 'child') addChild();
-    else if (act === 'sibling') addSibling();
-    else if (act === 'delete') deleteSelected();
+    // Adding a child or a sibling lives on the dots beside the card itself.
+    if (act === 'delete') deleteSelected();
     else if (act === 'label') startLabelEdit();
     else if (act === 'bold' || act === 'italic') {
       doc.toggleFormat(state.selectedId, act);
