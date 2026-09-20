@@ -616,6 +616,90 @@ try {
   await page.selectOption('#talk-link', 'jwlibrary');
   await page.waitForTimeout(200);
 
+  // On an iPad the reference has to answer a finger. Safari does not hit-test
+  // a <tspan>, so a `click` on one never arrives and the tap used to do
+  // nothing; the runs are measured instead. Checked under touch emulation.
+  {
+    const touch = await browser.newContext({
+      viewport: { width: 1180, height: 820 }, hasTouch: true,
+      userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15'
+        + ' (KHTML, like Gecko) Version/17.5 Safari/605.1.15',
+    });
+    const pad = await touch.newPage();
+    pad.on('pageerror', (error) => check(`no error on the iPad page: ${error.message}`, false));
+    await pad.goto(BASE, { waitUntil: 'networkidle' });
+    await pad.waitForTimeout(400);
+    await pad.fill('#outline', '# 장례사\n- 위로 필요\n  - 시편 34:18 를 천천히 읽기\n  - 유다 20, 21');
+    await pad.click('#btn-generate');
+    await pad.waitForTimeout(400);
+    await pad.click('#btn-talk');
+    await pad.waitForTimeout(400);
+
+    // By what it says, not by position: a drag below reorders the cards.
+    const centre = (words) => pad.evaluate((text) => {
+      const cite = [...document.querySelectorAll('.scripture')].find((c) => c.textContent.includes(text));
+      const rect = cite.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }, words);
+    const opened = () => pad.evaluate(() => window.mindmapper.lastVerseLink?.app ?? null);
+    // Before each tap: forget the last link, and put the floating toolbar of
+    // the selected card away, since it is free to sit over a neighbour.
+    const clear = () => pad.evaluate(() => {
+      window.mindmapper.lastVerseLink = null;
+      document.getElementById('node-toolbar').hidden = true;
+    });
+
+    // A card that happens to start with a reference can still be dragged.
+    // This goes first, while nothing is selected: the floating toolbar of a
+    // selected card would otherwise sit over the card being aimed at.
+    const outlineBefore = await pad.inputValue('#outline');
+    let spot = await centre('시편');
+    const target = await pad.evaluate(() => {
+      // onto its sibling, which reorders it: a real move, not a no-op
+      const node = [...document.querySelectorAll('.node')].find((n) => n.textContent.includes('유다'));
+      const rect = node.querySelector('.node-hit').getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.bottom - 2 };
+    });
+    await pad.mouse.move(spot.x, spot.y);
+    await pad.mouse.down();
+    await pad.mouse.move(target.x, target.y, { steps: 12 });
+    await pad.mouse.up();
+    await pad.waitForTimeout(400);
+    check('dragging from a reference moves the card instead of opening it',
+      (await opened()) === null && (await pad.inputValue('#outline')) !== outlineBefore,
+      `opened ${await opened()}; outline ${JSON.stringify(await pad.inputValue('#outline'))}`);
+
+    // A finger tap opens the verse.
+    await clear();
+    spot = await centre('시편');
+    await pad.touchscreen.tap(spot.x, spot.y);
+    await pad.waitForTimeout(400);
+    check('a finger tap on a reference opens it',
+      (await opened())?.includes('bible=19034018'), String(await opened()));
+
+    // A fingertip is wider than a line of text, so a little off still counts.
+    await clear();
+    spot = await centre('유다');
+    await pad.touchscreen.tap(spot.x, spot.y + 7);
+    await pad.waitForTimeout(400);
+    check('a tap just below the words still counts',
+      (await opened())?.includes('bible=65001020-65001021'), String(await opened()));
+
+    // But the plain words of the same card are not a reference.
+    await clear();
+    const plain = await pad.evaluate(() => {
+      const cite = [...document.querySelectorAll('.scripture')].find((c) => c.textContent.includes('시편'));
+      const box = cite.closest('.node').querySelector('.node-hit').getBoundingClientRect();
+      const rect = cite.getBoundingClientRect();
+      return { x: (rect.right + box.right) / 2, y: rect.top + rect.height / 2 };
+    });
+    await pad.touchscreen.tap(plain.x, plain.y);
+    await pad.waitForTimeout(350);
+    check('tapping the rest of the words does nothing', (await opened()) === null, String(await opened()));
+
+    await touch.close();
+  }
+
   // Minutes and notes need no Enter, and land on the node being typed into.
   await clickNode('Grief is natural');
   await page.waitForTimeout(200);

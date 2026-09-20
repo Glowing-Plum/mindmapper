@@ -1079,6 +1079,10 @@ ui.canvas.addEventListener('pointerdown', (event) => {
     refresh();
     return;
   }
+  // A tapped scripture reference opens in the chosen Bible site. This is
+  // armed before the drag so a finger that slides away scrolls instead.
+  armScriptureTap(event);
+
   if (state.selectedId !== id) {
     flushLiveCommit();
     state.selectedId = id;
@@ -1086,6 +1090,58 @@ ui.canvas.addEventListener('pointerdown', (event) => {
   }
   beginDrag(event, id);
 });
+
+/**
+ * Finds the scripture run under a pointer, by measuring the runs rather than
+ * asking the browser what is beneath the finger.
+ *
+ * Safari does not hit-test a <tspan>: the whole <text> answers as one, and the
+ * text layer is deliberately pointer-transparent so the box behind it takes
+ * drags. So on an iPad a `click` on a reference never happens. Measuring the
+ * run rectangles works the same way everywhere, and lets a fingertip be a
+ * little wide of the mark.
+ *
+ * @returns {Element|null}
+ */
+function scriptureAt(nodeEl, clientX, clientY, slack) {
+  let best = null;
+  for (const cite of nodeEl?.querySelectorAll('.scripture') ?? []) {
+    const rect = cite.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) continue;
+    const dx = Math.max(rect.left - clientX, 0, clientX - rect.right);
+    const dy = Math.max(rect.top - clientY, 0, clientY - rect.bottom);
+    const distance = Math.hypot(dx, dy);
+    if (distance > slack) continue;
+    if (!best || distance < best.distance) best = { cite, distance };
+  }
+  return best?.cite ?? null;
+}
+
+/**
+ * Opens the reference on release, so long as the pointer stayed put: a tap
+ * opens the verse, a drag still moves the card.
+ */
+function armScriptureTap(event) {
+  const slack = event.pointerType === 'mouse' ? 2 : 11;
+  const cite = scriptureAt(event.target.closest('.node'), event.clientX, event.clientY, slack);
+  if (!cite) return;
+  // Read these now: re-rendering the map replaces the element underneath us.
+  const canonical = cite.dataset.reference ?? '';
+  const label = cite.textContent;
+  const origin = { x: event.clientX, y: event.clientY };
+
+  const release = (upEvent) => {
+    window.removeEventListener('pointerup', release);
+    window.removeEventListener('pointercancel', release);
+    if (upEvent.type !== 'pointerup') return;
+    if (state.draggingId) return;
+    if (Math.hypot(upEvent.clientX - origin.x, upEvent.clientY - origin.y) > 9) return;
+    const [reference] = findReferences(canonical);
+    openReference(reference, { label });
+  };
+  window.addEventListener('pointerup', release);
+  window.addEventListener('pointercancel', release);
+}
 
 // The toolbar floats over the map, so it can sit on top of other nodes. When
 // the mouse moves away from it, it gets out of the way: without this, aiming
@@ -1099,15 +1155,6 @@ ui.wrap.addEventListener('pointermove', (event) => {
   ui.toolbar.classList.toggle('is-away', Math.hypot(dx, dy) > 90);
 });
 
-// A scripture reference on the map opens in the chosen Bible site.
-ui.canvas.addEventListener('click', (event) => {
-  const cite = event.target.closest('.scripture');
-  if (!cite) return;
-  // The element carries the canonical form for the link and shows the words
-  // as they were typed.
-  const [reference] = findReferences(cite.dataset.reference ?? '');
-  openReference(reference, { label: cite.textContent });
-});
 
 ui.canvas.addEventListener('dblclick', (event) => {
   const edgeId = event.target.closest('.edge-group, .edge-label')?.dataset.id;
@@ -1777,6 +1824,7 @@ window.mindmapper = {
   doc,
   get layout() { return layout; },
   get lastVerseLink() { return lastVerseLink; },
+  set lastVerseLink(value) { lastVerseLink = value; },
   viewport,
   refresh,
   clearState,

@@ -848,6 +848,13 @@ dialog menu { gap: 8px; align-items: center; justify-content: space-between; }
 
   .btn.icon { width: 42px; }
 
+  /* The toolbar floats above the selected card, which on a map means over a
+     neighbouring one. A mouse makes it fade as the pointer moves away; a
+     finger gives no such warning, so at least its padding and the gaps
+     between its buttons let a tap through to the card underneath. */
+  .node-toolbar { pointer-events: none; }
+  .node-toolbar > * { pointer-events: auto; }
+
   .tool {
     padding: 9px 11px;
     font-size: 13.5px;

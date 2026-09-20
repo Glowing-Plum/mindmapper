@@ -25,13 +25,23 @@ real origin, so open the served URL rather than the file itself.
 Built for preparing a talk you will actually stand up and give. Turn it on with
 **Talk mode** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>T</kbd>).
 
-**Scripture references are recognised** wherever they appear in a node —
-`John 3:16`, `1 Cor 13:4-7`, `Gen. 1:1`, `시편 34:18`, `요한복음3:16` — in
-English or Korean, full names or abbreviations. They are set apart on the map,
-collected into an index in the Talk panel, and can open in the Bible site of
-your choosing (BibleGateway, YouVersion, Blue Letter Bible, wol.jw.org, or any
-URL template of your own with `{ref}`, `{book}`, `{chapter}` and `{verse}`).
-The default is no links at all.
+**Scripture references are recognised** wherever they appear in a node, in
+English or Korean, full names or abbreviations:
+
+| Written | Read as |
+| --- | --- |
+| `John 3:16`, `1 Cor 13:4-7`, `Gen. 1:1` | the usual English forms |
+| `시편 34:18`, `요한복음3:16` | Korean, with or without a space |
+| `요한복음 17장 3절`, `시편 83편 18절` | the Korean chapter and verse markers |
+| `시편 23편` | a whole chapter |
+| `마태 24:14`, `로마 12:2`, `계시록 21:3, 4` | short names |
+| `고린도 전서 13:4-8`, `요한 1서 5:3` | spaced numbered books |
+| `다니엘서 2:44` | a trailing 서 |
+| `유다 20, 21`, `Philemon 4, 5` | verses of a one-chapter book, not chapters |
+
+They are set apart on the map, collected into an index in the Talk panel, and
+tapping one hands it to **JW Library** — or opens jw.org in a tab, or any URL
+template of your own. The Talk panel chooses which, and the language.
 
 The index lists each reference **as you wrote it**; the canonical English form
 is used only to build the link, so a Korean outline stays Korean on screen.
