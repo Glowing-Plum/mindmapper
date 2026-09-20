@@ -198,6 +198,26 @@ try {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
 
+  // Loading a sample must not silently discard the map you are working on.
+  const beforeSample = await nodeCount();
+  check('the sample picker starts on its placeholder', (await page.inputValue('#sample-select')) === '');
+  await page.selectOption('#sample-select', 'trip');
+  await page.waitForTimeout(300);
+  check('picking a sample asks first', await page.isVisible('#confirm-dialog'));
+  await page.click('#confirm-dialog button[value="cancel"]');
+  await page.waitForTimeout(300);
+  check('cancelling keeps the current map', (await nodeCount()) === beforeSample);
+  check('the picker resets after cancelling', (await page.inputValue('#sample-select')) === '');
+
+  await page.selectOption('#sample-select', 'trip');
+  await page.waitForTimeout(250);
+  await page.click('#confirm-ok');
+  await page.waitForTimeout(500);
+  check('confirming loads the sample', (await outline()).includes('Kyoto'));
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(400);
+  check('loading a sample is undoable', (await nodeCount()) === beforeSample);
+
   // Export.
   const svg = await page.evaluate(async () => {
     const mod = await import('/src/exporters.js');

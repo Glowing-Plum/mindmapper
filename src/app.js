@@ -227,7 +227,11 @@ function writeOutline() {
   ui.outlineStatus.textContent = '';
 }
 
-async function generateFromOutline() {
+async function generateFromOutline({
+  checkpointLabel = 'Before generate',
+  preserveFormatting = true,
+  what = 'Map generated',
+} = {}) {
   const source = ui.outline.value;
   const existing = [...walk(doc.root)].length;
   if (!source.trim() && existing > 1) {
@@ -239,10 +243,12 @@ async function generateFromOutline() {
     if (!ok) return;
   }
 
-  checkpoint('Before generate');
+  checkpoint(checkpointLabel);
   // The outline carries text only, so formatting is re-applied by matching
   // nodes on their path: regenerating never silently drops your styling.
-  const root = carryFormatting(doc.root, parseOutline(source, { title: 'Mind map' }));
+  // A sample is unrelated content, so it starts clean instead.
+  const parsed = parseOutline(source, { title: 'Mind map' });
+  const root = preserveFormatting ? carryFormatting(doc.root, parsed) : parsed;
   doc.replaceRoot(root);
   state.selectedId = null;
   state.outlineDirty = false;
@@ -251,7 +257,7 @@ async function generateFromOutline() {
   const count = [...walk(root)].length;
   ui.outlineStatus.textContent = `${count} node${count === 1 ? '' : 's'}`;
   if (window.innerWidth < NARROW) setSidebar(false);
-  showToast(`Map generated — ${count} node${count === 1 ? '' : 's'}. Ctrl+Z undoes this.`);
+  showToast(`${what} — ${count} node${count === 1 ? '' : 's'}. Ctrl+Z undoes this.`);
 }
 
 // -------------------------------------------------------------- selection
@@ -811,18 +817,40 @@ function applyHighlight(id) {
 }
 
 function buildSampleSelect() {
+  // A menu, not a state display: it never claims the map you are working on is
+  // one of the samples, and it resets so the same sample can be picked twice.
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Sample maps…';
+  ui.sampleSelect.append(placeholder);
   for (const sample of SAMPLES) {
     const option = document.createElement('option');
     option.value = sample.id;
     option.textContent = sample.name;
     ui.sampleSelect.append(option);
   }
-  ui.sampleSelect.value = DEFAULT_SAMPLE.id;
-  ui.sampleSelect.addEventListener('change', () => {
+  ui.sampleSelect.value = '';
+
+  ui.sampleSelect.addEventListener('change', async () => {
     const sample = SAMPLES.find((entry) => entry.id === ui.sampleSelect.value);
+    ui.sampleSelect.value = '';
     if (!sample) return;
+
+    const existing = [...walk(doc.root)].length;
+    if (existing > 1) {
+      const ok = await confirmAction({
+        title: `Load the ${sample.name} sample?`,
+        body: `This replaces the map you are working on (${existing} nodes). A version is kept in History, and Ctrl+Z undoes it.`,
+        confirmLabel: 'Load sample',
+      });
+      if (!ok) return;
+    }
     ui.outline.value = sample.outline;
-    generateFromOutline();
+    generateFromOutline({
+      checkpointLabel: `Before loading ${sample.name}`,
+      preserveFormatting: false,
+      what: `${sample.name} loaded`,
+    });
   });
 }
 

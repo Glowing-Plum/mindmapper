@@ -243,15 +243,55 @@ test('the curve resolves near the parent, then runs straight to the child', () =
   assert.ok(c2x - startX <= (endX - startX) * 0.8);
 });
 
-test('every edge carries a label anchor on its straight run', () => {
+test('every edge carries a label anchor centred on the connector', () => {
   const { edges } = layoutOf(bigOutline);
   for (const edge of edges) {
-    assert.ok(Number.isFinite(edge.labelAnchor.x) && Number.isFinite(edge.labelAnchor.y));
-    assert.equal(edge.labelAnchor.y, edge.to.y + edge.to.h / 2, 'the anchor sits on the line into the child');
-    const [low, high] = [edge.from.x, edge.to.x].sort((a, b) => a - b);
-    assert.ok(edge.labelAnchor.x >= low - 1 && edge.labelAnchor.x <= high + edge.to.w + 1);
+    const { labelAnchor: anchor } = edge;
+    assert.ok(Number.isFinite(anchor.x) && Number.isFinite(anchor.y));
+
+    // Horizontally centred between the two ends it joins.
+    const startX = edge.to.side === 1 ? edge.from.x + edge.from.w : edge.from.x;
+    const endX = edge.to.side === 1 ? edge.to.x : edge.to.x + edge.to.w;
+    assert.ok(Math.abs(anchor.x - (startX + endX) / 2) < 0.5, `${edge.to.node.text} anchor is off-centre`);
+
+    // Vertically between the two rows, never pinned to either end.
+    const startY = edge.from.y + edge.from.h / 2;
+    const endY = edge.to.y + edge.to.h / 2;
+    const [low, high] = [startY, endY].sort((a, b) => a - b);
+    assert.ok(anchor.y >= low - 0.5 && anchor.y <= high + 0.5);
     assert.equal(edge.label, null, 'unlabelled edges carry no label box');
   }
+});
+
+test('a label on a diagonal line sits at the middle of the line, not beside the child', () => {
+  // Reproduces the case that looked wrong: a short, steeply diagonal edge.
+  const root = parseOutline('Promise\n  - Psalm 34:18\n  - Psalm 147:3');
+  root.children[0].edgeLabel = 'scripture';
+  const { edges, byId } = computeLayout(root, { mode: 'right' });
+  const edge = edges.find((candidate) => candidate.label);
+  const parent = byId.get(root.id);
+  const child = byId.get(root.children[0].id);
+
+  const startX = parent.x + parent.w;
+  const fraction = (edge.label.x - startX) / (child.x - startX);
+  assert.ok(Math.abs(fraction - 0.5) < 0.02, `label sits ${Math.round(fraction * 100)}% along the line`);
+
+  // It rides the curve partway down the diagonal -- not pinned to either row.
+  // (It sits a little past the straight-line midpoint because the curve
+  // resolves early, which is the shape of the connector, not an offset.)
+  const parentY = parent.y + parent.h / 2;
+  const childY = child.y + child.h / 2;
+  const drop = (edge.label.y - parentY) / (childY - parentY);
+  assert.ok(drop > 0.25 && drop < 0.75, `label sits ${Math.round(drop * 100)}% down the diagonal`);
+});
+
+test('a label on a level line keeps to that line', () => {
+  const root = parseOutline('Parent\n  - Only child');
+  root.children[0].edgeLabel = 'leads to';
+  const { edges, byId } = computeLayout(root, { mode: 'right' });
+  const child = byId.get(root.children[0].id);
+  assert.ok(edges[0].path.includes(' L '), 'a lone child is level with its parent');
+  assert.ok(Math.abs(edges[0].label.y - (child.y + child.h / 2)) < 0.5);
 });
 
 test('a labelled line reserves room for its label', () => {
