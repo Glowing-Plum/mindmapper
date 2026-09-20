@@ -20,6 +20,30 @@ you work, and close it (or press <kbd>Ctrl</kbd> + <kbd>C</kbd>) to stop.
 There is nothing to install: no dependencies, no build step. ES modules need a
 real origin, so open the served URL rather than the file itself.
 
+## Using it on an iPad (or any other device)
+
+An iPad cannot run the local server, so put the app on the web instead. It is
+static files, so **GitHub Pages** hosts it for nothing:
+
+1. In the repository, go to **Settings → Pages**.
+2. Under *Build and deployment*, set **Source: Deploy from a branch**, then
+   **Branch: `main`** and **folder: `/ (root)`**, and press Save.
+3. A minute later it is live at `https://<user>.github.io/<repo>/`.
+
+Open that on the iPad, then **Share → Add to Home Screen**. It gets an icon,
+opens without Safari's chrome, and — because the app registers a service worker
+— **keeps working with no connection** once it has loaded. Pushing to `main`
+updates it; the new version is picked up on the next load.
+
+On iPad, *Open…* reads from the Files app, so maps kept in iCloud Drive are
+available on every device. Safari has no file-handle API, so **Save a copy**
+writes a new file to Files rather than overwriting in place — on a Mac, Chrome
+or Edge give you true in-place saving.
+
+The app is touch-first as well as keyboard-first: tap to select, double-tap to
+edit, drag a node to re-parent it, drag the background to pan, pinch to zoom,
+and use the toolbar above a selected node where there is no keyboard.
+
 ## Your maps are files
 
 Use <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>O</kbd> (or **Open…**) to open a map,
@@ -147,6 +171,8 @@ app.
 | `src/editor.js` | The textarea floated over the node or label being edited |
 | `src/storage.js` | Autosave and the rolling version history |
 | `src/files.js` | Opening and saving real files, with a fallback for browsers without file handles |
+| `sw.js` | Service worker: caches the app shell so it runs offline |
+| `manifest.webmanifest` | Makes the app installable to a home screen |
 | `src/exporters.js` | SVG/PNG/Markdown/JSON output and downloads |
 | `src/app.js` | Interaction state and wiring |
 
@@ -164,7 +190,7 @@ cannot carry.
 
 `npm run test:browser` boots the app in Chromium and exercises editing,
 dragging, formatting, line labels, collapsing, undo, version history, opening
-and saving files, drag-and-drop, autosave and export (43 checks). It skips
+and saving files, drag-and-drop, autosave and export (44 checks). It skips
 itself cleanly when Playwright is not installed.
 
 ## Browser support

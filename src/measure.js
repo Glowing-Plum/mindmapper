@@ -8,10 +8,27 @@ export const FONT_STACK =
 // Per-depth typography. Depth 0 is the root -- the one node drawn as a card.
 // Everything below it is bare text, so its padding is really just the gap
 // between the connector and the first letter, plus a comfortable hit area.
-export const NODE_STYLES = [
+const BASE_NODE_STYLES = [
   { fontSize: 19, fontWeight: 600, maxWidth: 280, padX: 20, padY: 13, minHeight: 46, radius: 12 },
   { fontSize: 14.5, fontWeight: 500, maxWidth: 260, padX: 11, padY: 7, minHeight: 28, radius: 6 },
 ];
+
+/**
+ * A fingertip is far blunter than a cursor, so on touch devices the invisible
+ * hit area around each node grows. The text is untouched -- only the padding.
+ */
+function usesCoarsePointer() {
+  return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+}
+
+export const NODE_STYLES = usesCoarsePointer()
+  ? BASE_NODE_STYLES.map((style) => ({
+    ...style,
+    padX: style.padX + 3,
+    padY: style.padY + 5,
+    minHeight: Math.max(style.minHeight, 40),
+  }))
+  : BASE_NODE_STYLES;
 
 export function styleForDepth(depth) {
   return NODE_STYLES[Math.min(depth, NODE_STYLES.length - 1)];

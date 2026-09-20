@@ -858,7 +858,7 @@ function restructure(direction) {
 
 // ------------------------------------------------------------------ chrome
 
-const NARROW = 760; // below this the outline panel floats over the canvas
+const NARROW = 900; // below this the outline panel floats over the canvas
 
 /** Fits the whole map, but never so small that the labels stop being legible. */
 function fitMap({ animate = true } = {}) {
@@ -1089,15 +1089,30 @@ function bindChrome() {
 
   const menu = el('export-menu');
   const list = menu.querySelector('.menu-list');
+  const exportButton = el('btn-export');
   const closeMenu = () => {
     list.hidden = true;
-    el('btn-export').setAttribute('aria-expanded', 'false');
+    exportButton.setAttribute('aria-expanded', 'false');
   };
-  el('btn-export').addEventListener('click', (event) => {
+  const openMenu = () => {
+    list.hidden = false;
+    exportButton.setAttribute('aria-expanded', 'true');
+    // The menu is fixed, so it is placed against the button's position on
+    // screen and kept inside the window.
+    const rect = exportButton.getBoundingClientRect();
+    list.style.top = `${rect.bottom + 6}px`;
+    const width = list.offsetWidth || 190;
+    const right = Math.min(window.innerWidth - 8, Math.max(rect.right, width + 8));
+    list.style.left = `${right - width}px`;
+  };
+  exportButton.addEventListener('click', (event) => {
     event.stopPropagation();
-    list.hidden = !list.hidden;
-    el('btn-export').setAttribute('aria-expanded', String(!list.hidden));
+    if (list.hidden) openMenu();
+    else closeMenu();
   });
+  // A fixed menu cannot follow the bar, so it closes rather than drifting.
+  window.addEventListener('resize', closeMenu);
+  document.querySelector('.topbar').addEventListener('scroll', closeMenu);
   list.addEventListener('click', (event) => {
     const kind = event.target.dataset?.export;
     if (!kind) return;
@@ -1162,6 +1177,16 @@ function boot() {
 }
 
 boot();
+
+// Offline support, so the app keeps working without a connection once it has
+// been loaded. Only over https (or localhost); a failure here is not fatal.
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch((error) => {
+      console.warn('Offline support is unavailable:', error);
+    });
+  });
+}
 
 // Exposed for debugging from the console.
 window.mindmapper = { doc, get layout() { return layout; }, viewport, refresh, clearState };
