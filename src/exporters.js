@@ -38,7 +38,8 @@ function exportStylesheet() {
     .edge { fill: none; stroke-linecap: round; }
     .edge-hit { display: none; }
     .edge-label-bg { fill: ${v['--canvas-bg']}; stroke: none; }
-    .edge-label-text { fill: ${v['--text-soft']}; font-size: 12px; font-weight: 500; text-anchor: middle; }
+    /* fill comes from the element's own style: each label matches its line */
+    .edge-label-text { font-size: 12px; font-weight: 500; text-anchor: middle; }
   `;
 }
 

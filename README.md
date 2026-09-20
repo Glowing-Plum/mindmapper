@@ -20,6 +20,35 @@ you work, and close it (or press <kbd>Ctrl</kbd> + <kbd>C</kbd>) to stop.
 There is nothing to install: no dependencies, no build step. ES modules need a
 real origin, so open the served URL rather than the file itself.
 
+## Talk mode
+
+Built for preparing a talk you will actually stand up and give. Turn it on with
+**Talk mode** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>T</kbd>).
+
+**Scripture references are recognised** wherever they appear in a node —
+`John 3:16`, `1 Cor 13:4-7`, `Gen. 1:1`, `시편 34:18`, `요한복음3:16` — in
+English or Korean, full names or abbreviations. They are set apart on the map,
+collected into an index in the Talk panel, and can open in the Bible site of
+your choosing (BibleGateway, YouVersion, Blue Letter Bible, wol.jw.org, or any
+URL template of your own with `{ref}`, `{book}`, `{chapter}` and `{verse}`).
+The default is no links at all.
+
+The index lists each reference **as you wrote it**; the canonical English form
+is used only to build the link, so a Korean outline stays Korean on screen.
+
+**Timings tell you whether it fits.** Give any part a length in minutes. A
+parent with no time of its own adds up its children, so you can plan top-down
+("10 minutes for this section"), bottom-up, or mix the two — an explicit time
+on a section always wins over the sum of its parts. Set the time you have and
+the panel shows where you stand, flagging both over-running and not filling
+the slot.
+
+**Speaker notes** live on any node, marked with ✎ on the map.
+
+**Print / PDF** produces the thing you carry to the podium: the outline
+indented by level, scripture in bold, times down the right margin and your
+notes underneath each part. Print to PDF from the browser's dialog to keep it.
+
 ## Using it on an iPad (or any other device)
 
 An iPad cannot run the local server, so put the app on the web instead. It is
@@ -96,15 +125,24 @@ always a faithful text version of what you see.
 | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>B</kbd> / <kbd>I</kbd> | Bold / italic |
 | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>H</kbd> | Cycle the text highlight |
 | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>L</kbd> | Label the line coming into this node |
-| <kbd>Space</kbd> | Collapse or expand (the bubble counts what is hidden) |
+| Hold <kbd>Space</kbd> + drag | Pan from anywhere, even over a node |
+| <kbd>.</kbd> | Collapse or expand (the bubble counts what is hidden) |
 | <kbd>Delete</kbd> | Delete the node and its subtree |
 | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Z</kbd> | Undo (add <kbd>Shift</kbd> to redo) |
 | <kbd>Shift</kbd> + <kbd>F</kbd> | Fit the map on screen |
 | <kbd>?</kbd> | Shortcut help |
 
-Drag a node onto another to re-parent it — moves that would put a node inside
-its own subtree are refused. Scroll or drag empty space to pan;
-<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + scroll, or pinch, to zoom.
+**Two handles** appear on a node while it is selected or being typed in: the
+one out to the side adds a child, the one underneath adds a sibling. They take
+the colour of the branch they would extend.
+
+**Drag a card anywhere.** Dropping on the middle of a node makes it a child;
+dropping near a node's top or bottom edge places it above or below as a
+sibling, with a line showing exactly where it will land. Moves that would put a
+node inside its own subtree are refused.
+
+Scroll or drag empty space to pan, or hold <kbd>Space</kbd> and drag from
+anywhere. <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + scroll, or pinch, to zoom.
 
 ### Formatting and line labels
 
@@ -171,6 +209,8 @@ app.
 | `src/editor.js` | The textarea floated over the node or label being edited |
 | `src/storage.js` | Autosave and the rolling version history |
 | `src/files.js` | Opening and saving real files, with a fallback for browsers without file handles |
+| `src/scripture.js` | Recognising scripture references, in English and Korean, and linking them |
+| `src/timing.js` | Talk timings: per-part minutes, roll-up and how it compares with your slot |
 | `sw.js` | Service worker: caches the app shell so it runs offline |
 | `manifest.webmanifest` | Makes the app installable to a home screen |
 | `src/exporters.js` | SVG/PNG/Markdown/JSON output and downloads |
@@ -182,16 +222,18 @@ invariant that no two nodes ever overlap.
 
 ## Tests
 
-`npm test` runs 75 unit tests across the parser, the document model, the layout
-engine, file handling and local storage — including the invariants that nodes
+`npm test` runs 94 unit tests across the parser, the document model, the layout
+engine, scripture detection, talk timings, file handling and local storage — including the invariants that nodes
 never overlap, that siblings align only with each other, that regenerating
 preserves formatting, and that a `.json` file round-trips everything an outline
 cannot carry.
 
 `npm run test:browser` boots the app in Chromium and exercises editing,
 dragging, formatting, line labels, collapsing, undo, version history, opening
-and saving files, drag-and-drop, autosave and export (44 checks). It skips
-itself cleanly when Playwright is not installed.
+and saving files, drag-and-drop, talk mode, timings, the scripture index, the
+printable outline, space-to-pan, the node handles, autosave and export
+(62 checks). It skips itself cleanly
+when Playwright is not installed.
 
 ## Browser support
 

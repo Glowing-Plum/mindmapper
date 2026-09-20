@@ -163,6 +163,77 @@ try {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
 
+  // Holding space pans from anywhere, including from on top of a node.
+  const beforeSpace = await page.evaluate(() => ({ ...window.mindmapper.viewport.state }));
+  const overNode = await page.evaluate(() => {
+    const r = document.querySelector('.node:not(.is-root) .node-hit').getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  const outlineBeforeSpace = await outline();
+  await page.keyboard.down('Space');
+  await page.mouse.move(overNode.x, overNode.y);
+  await page.mouse.down();
+  await page.mouse.move(overNode.x + 110, overNode.y + 40, { steps: 8 });
+  await page.mouse.up();
+  await page.keyboard.up('Space');
+  await page.waitForTimeout(250);
+  const afterSpace = await page.evaluate(() => ({ ...window.mindmapper.viewport.state }));
+  check('space + drag over a node pans instead of moving it',
+    Math.abs(afterSpace.x - beforeSpace.x) > 60 && (await outline()) === outlineBeforeSpace);
+  check('releasing space leaves pan mode',
+    !(await page.evaluate(() => document.getElementById('canvas').classList.contains('is-pan-ready'))));
+
+  // The two handles on a node: one adds a child, one adds a sibling.
+  await clickNode('Launch checklist');
+  await page.waitForTimeout(250);
+  const handleId = await idOf('Launch checklist');
+  check('handles show on the selected node', await page.evaluate((id) =>
+    getComputedStyle(document.querySelector(`.node[data-id="${id}"] .node-handle-child`)).opacity === '1', handleId));
+  await page.click(`.node[data-id="${handleId}"] .node-handle-child`);
+  await page.waitForTimeout(250);
+  check('the side handle opens a new child for typing', await page.isVisible('.inline-editor'));
+  await page.keyboard.type('Sub item');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(350);
+  check('the child is created under that node',
+    /- Launch checklist\n\s+- Sub item/.test(await outline()));
+
+  const subId = await idOf('Sub item');
+  await page.dblclick(`.node[data-id="${subId}"] .node-hit`);
+  await page.waitForTimeout(250);
+  check('handles stay visible while typing', await page.evaluate((id) =>
+    getComputedStyle(document.querySelector(`.node[data-id="${id}"] .node-handle-sibling`)).opacity === '1', subId));
+  await page.click(`.node[data-id="${subId}"] .node-handle-sibling`, { force: true });
+  await page.waitForTimeout(300);
+  await page.keyboard.type('Next to it');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(350);
+  check('the lower handle adds a sibling', /- Sub item\n\s+- Next to it/.test(await outline()));
+
+  // A card can be dropped between siblings, not only onto a parent.
+  const dropBetween = await (async () => {
+    const from = await page.evaluate((id) => {
+      const r = document.querySelector(`.node[data-id="${id}"] .node-hit`).getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }, await idOf('Next to it'));
+    const to = await page.evaluate((id) => {
+      const r = document.querySelector(`.node[data-id="${id}"] .node-hit`).getBoundingClientRect();
+      return { x: r.left + r.width / 2, top: r.top };
+    }, await idOf('Landing page'));
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 10, from.y + 6, { steps: 3 });
+    await page.mouse.move(to.x, to.top + 3, { steps: 10 });
+    await page.waitForTimeout(150);
+    const line = await page.locator('.drop-line').count();
+    await page.mouse.up();
+    await page.waitForTimeout(350);
+    return line;
+  })();
+  check('dropping at a node edge shows an insertion line and places it there',
+    dropBetween === 1 && /- Next to it\n\s+- Landing page/.test(await outline()),
+    JSON.stringify((await outline()).split('\n').slice(-8)));
+
   // Dragging empty space still pans (the pan must not steal that double-click).
   const beforePan = await page.evaluate(() => ({ ...window.mindmapper.viewport.state }));
   await page.mouse.move(700, 800);
@@ -175,11 +246,11 @@ try {
 
   // Collapsing.
   await clickNode('Positioning');
-  await page.keyboard.press(' ');
+  await page.keyboard.press('.');
   await page.waitForTimeout(300);
   check('collapse hides the subtree', (await nodeCount()) < initial);
   check('collapsed node shows a count', /^\d+$/.test(await page.textContent('.node.is-collapsed .node-badge-text')));
-  await page.keyboard.press(' ');
+  await page.keyboard.press('.');
   await page.waitForTimeout(300);
 
   // Regenerating keeps formatting that the outline itself cannot carry.
@@ -323,6 +394,91 @@ try {
   await page.waitForTimeout(500);
   check('a file that is not a mind map is refused',
     (await outline()) === beforeBad && (await page.textContent('#toast')).includes('does not look like a mind map'));
+
+  // ---- talk mode ---------------------------------------------------------
+  await page.fill('#outline', [
+    '# Comfort for the bereaved',
+    '- Grief is natural',
+    '  - Genesis 23:2',
+    '  - John 11:35',
+    '- Jehovah promises comfort',
+    '  - 시편 34:18',
+  ].join('\n'));
+  await page.click('#btn-generate');
+  await page.waitForTimeout(400);
+  await page.click('#btn-talk');
+  await page.waitForTimeout(400);
+
+  check('talk mode marks scripture on the map', (await page.locator('.scripture').count()) === 3);
+  check('the scripture index lists them as written',
+    (await page.locator('.ref-row').count()) === 3
+    && (await page.textContent('.ref-row .ref-cite')) === 'Genesis 23:2');
+  check('a Korean reference resolves to its English book', await page.evaluate(async () => {
+    const mod = await import('/src/scripture.js');
+    return mod.findReferences('시편 34:18')[0].canonical === 'Psalms 34:18';
+  }));
+
+  // Timings roll up, and the target is judged.
+  await page.fill('#talk-target', '10');
+  const timeNode = async (text, minutes) => {
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(120);
+    await clickNode(text);
+    await page.waitForTimeout(150);
+    await page.fill('#talk-minutes', String(minutes));
+    await page.dispatchEvent('#talk-minutes', 'change');
+    await page.waitForTimeout(250);
+  };
+  await timeNode('Grief is natural', 4);
+  await timeNode('Jehovah promises comfort', 5);
+  check('timings roll up to the root', (await page.textContent('#talk-total')).includes('9 min'),
+    await page.textContent('#talk-total'));
+  check('a time chip is drawn on the map', await page.evaluate(() =>
+    [...document.querySelectorAll('.node-meta')].some((n) => n.textContent.includes('9m'))));
+
+  await page.fill('#talk-target', '5');
+  await page.waitForTimeout(250);
+  check('going over the time is flagged',
+    (await page.getAttribute('#talk-total', 'class')).includes('is-over'));
+
+  // Speaker notes.
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press('Escape');
+  await clickNode('Jehovah promises comfort');
+  await page.waitForTimeout(200);
+  await page.fill('#talk-note', 'Pause here.');
+  await page.dispatchEvent('#talk-note', 'blur');
+  await page.waitForTimeout(300);
+  check('a note is kept and marked on the map', await page.evaluate(() => {
+    const node = [...window.mindmapper.doc.nodes.values()].find((n) => n.text === 'Jehovah promises comfort');
+    return node.note === 'Pause here.';
+  }));
+
+  // The printable outline.
+  const printed = await page.evaluate(() => {
+    window.print = () => { window.__printed = true; };
+    document.getElementById('btn-print').click();
+    return {
+      called: window.__printed === true,
+      title: document.querySelector('.print-title')?.textContent,
+      scriptures: document.querySelectorAll('.print-scripture').length,
+      notes: document.querySelectorAll('.print-note').length,
+      times: document.querySelectorAll('.print-time').length,
+    };
+  });
+  check('print builds an outline with scripture, times and notes',
+    printed.called && printed.title === 'Comfort for the bereaved'
+    && printed.scriptures === 3 && printed.notes === 1 && printed.times >= 2,
+    JSON.stringify(printed));
+
+  // Talk mode is remembered.
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(500);
+  check('talk mode survives a reload', (await page.getAttribute('#btn-talk', 'aria-pressed')) === 'true');
+  await page.click('#btn-talk');
+  await page.waitForTimeout(300);
+  check('talk mode can be turned off', (await page.locator('.scripture').count()) === 0);
 
   // Export.
   const svg = await page.evaluate(async () => {

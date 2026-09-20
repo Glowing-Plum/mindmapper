@@ -1,25 +1,30 @@
 /* ---------------------------------------------------------------- tokens */
 :root {
-  --canvas-bg: #eef1f6;
-  --surface: #ffffff;
-  --surface-2: #f2f3f7;
-  --border: #e3e5ec;
-  --border-strong: #d2d5e0;
-  --text: #23262f;
-  --text-soft: #6b7089;
-  --root-bg: #ffffff;
-  --root-text: #23262f;
-  --node-hover: rgba(35, 38, 47, 0.06);
-  --hl-yellow: #fbeaa8;
-  --hl-green: #c8ecc9;
-  --hl-blue: #c5e2fb;
-  --hl-pink: #fbd0e0;
-  --accent: #6366f1;
-  --accent-soft: #eef0ff;
+  /* A warm paper tone: easier on the eyes than cool grey for long sessions. */
+  --canvas-bg: #f4f1ea;
+  --surface: #fffefb;
+  --surface-2: #f6f2ea;
+  --border: #e7e0d4;
+  --border-strong: #d7cec0;
+  --text: #2b2723;
+  --text-soft: #6f675c;
+  --root-bg: #fffefb;
+  --root-text: #2b2723;
+  --node-hover: rgba(43, 39, 35, 0.06);
+  --hl-yellow: #fae6a3;
+  --hl-green: #cbe9c4;
+  --hl-blue: #c7e0f6;
+  --hl-pink: #f8cedc;
+  --accent: #6257e8;
+  --accent-soft: #eeecff;
   --danger: #e11d48;
-  --shadow-sm: 0 1px 2px rgba(24, 28, 48, 0.08), 0 1px 3px rgba(24, 28, 48, 0.06);
-  --shadow-md: 0 6px 16px rgba(24, 28, 48, 0.1), 0 2px 4px rgba(24, 28, 48, 0.06);
-  --shadow-lg: 0 18px 40px rgba(24, 28, 48, 0.16);
+  --warning: #b45309;
+  --success: #15803d;
+  --scripture: #1d4ed8;
+  --text-faint: #9d9488;
+  --shadow-sm: 0 1px 2px rgba(60, 50, 35, 0.08), 0 1px 3px rgba(60, 50, 35, 0.06);
+  --shadow-md: 0 6px 16px rgba(60, 50, 35, 0.12), 0 2px 4px rgba(60, 50, 35, 0.07);
+  --shadow-lg: 0 18px 40px rgba(60, 50, 35, 0.18);
   --radius: 10px;
   --font: Inter, "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --topbar-h: 56px;
@@ -27,22 +32,26 @@
 }
 
 [data-theme='dark'] {
-  --canvas-bg: #171a24;
-  --surface: #1d2030;
-  --surface-2: #252939;
-  --border: #2f3347;
-  --border-strong: #3c415a;
-  --text: #edeef5;
-  --text-soft: #a0a6c0;
-  --root-bg: #262a3b;
-  --root-text: #edeef5;
-  --node-hover: rgba(237, 238, 245, 0.08);
+  --canvas-bg: #1b1917;
+  --surface: #252220;
+  --surface-2: #2c2825;
+  --border: #383330;
+  --border-strong: #4a443e;
+  --text: #f0ebe4;
+  --text-soft: #a9a094;
+  --root-bg: #2b2724;
+  --root-text: #f0ebe4;
+  --node-hover: rgba(240, 235, 228, 0.08);
   --hl-yellow: #6b5a16;
   --hl-green: #1f5133;
   --hl-blue: #1d4463;
   --hl-pink: #5e2340;
-  --accent: #818cf8;
-  --accent-soft: #2a2e52;
+  --accent: #8f87f5;
+  --accent-soft: #302b46;
+  --warning: #fbbf24;
+  --success: #4ade80;
+  --scripture: #9db8fb;
+  --text-faint: #7f766b;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 20px 44px rgba(0, 0, 0, 0.55);
@@ -104,6 +113,13 @@ body {
 
 .topbar-group.right {
   margin-left: auto;
+  /* The bar scrolls horizontally when it runs out of room, so the controls
+     you reach for most are pinned and never scroll out of sight. */
+  position: sticky;
+  right: 0;
+  padding-left: 28px;
+  /* Fade whatever passes underneath rather than slicing it mid-word. */
+  background: linear-gradient(to right, transparent, var(--surface) 26px);
 }
 
 .field {
@@ -372,6 +388,8 @@ select:focus-visible,
 }
 
 #canvas.is-panning { cursor: grabbing; }
+#canvas.is-pan-ready { cursor: grab; }
+#canvas.is-pan-ready .node { cursor: grab; }
 #canvas:focus { outline: none; }
 
 /* ----------------------------------------------------------------- nodes */
@@ -422,6 +440,33 @@ select:focus-visible,
   pointer-events: none;
   letter-spacing: -0.005em;
 }
+
+/* The add-a-node handles: shown while a node is selected or being typed in,
+   which is exactly when you want to branch off it. */
+.node-handle {
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  transition: opacity 140ms ease;
+}
+
+.node.is-selected .node-handle,
+.node.is-editing .node-handle,
+.node:hover .node-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.node-handle-hit { fill: transparent; }
+
+.node-handle-dot {
+  fill: var(--handle-color, var(--accent));
+  stroke: var(--canvas-bg);
+  stroke-width: 2;
+  transition: r 120ms ease;
+}
+
+.node-handle:hover .node-handle-dot { r: 6.5; }
 
 .node-badge { cursor: pointer; }
 
@@ -492,6 +537,14 @@ select:focus-visible,
 .edge-label.is-editing .edge-label-text,
 .edge-label.is-editing .edge-label-bg { opacity: 0; }
 
+.drop-line {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.drop-line-cap { fill: var(--accent); }
+
 .drop-indicator {
   fill: none;
   stroke: var(--accent);
@@ -529,6 +582,13 @@ select:focus-visible,
 }
 
 .node-toolbar[hidden] { display: none; }
+
+/* Faded out and click-through while the pointer is elsewhere on the map. */
+.node-toolbar.is-away {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
 
 .swatches { display: flex; gap: 4px; }
 
@@ -659,15 +719,6 @@ kbd {
     box-shadow: var(--shadow-lg);
   }
   .brand span { display: none; } /* the mark alone carries it on a narrow bar */
-
-  /* The bar scrolls, but the things you reach for most must never scroll away. */
-  .topbar-group.right {
-    position: sticky;
-    right: 0;
-    padding-left: 28px;
-    /* Fade whatever scrolls underneath rather than slicing it mid-word. */
-    background: linear-gradient(to right, transparent, var(--surface) 26px);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -805,4 +856,245 @@ dialog menu { gap: 8px; align-items: center; justify-content: space-between; }
   .node-toolbar { gap: 8px; padding: 8px; }
 
   .version-row { padding: 14px 12px; }
+}
+
+/* ------------------------------------------------------------- talk mode */
+.scripture {
+  fill: var(--scripture);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.node-meta {
+  fill: var(--text-faint);
+  font-size: 0.82em;
+  font-weight: 500;
+}
+
+.node.is-root .node-meta { fill: var(--text-soft); }
+
+.tabs {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.tab {
+  font: inherit;
+  font-size: 12.5px;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tab[aria-selected='true'] {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 560;
+  box-shadow: var(--shadow-sm);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.panel[hidden] { display: none; }
+
+#panel-talk { overflow-y: auto; gap: 18px; }
+
+.talk-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.talk-heading {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-soft);
+}
+
+.talk-count { color: var(--text-faint); font-weight: 500; }
+
+.talk-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.talk-field input {
+  font: inherit;
+  font-size: 14px;
+  width: 74px;
+  padding: 6px 8px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.talk-field input:disabled { opacity: 0.5; }
+
+.talk-total {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.talk-total.is-over { color: var(--danger); }
+.talk-total.is-short { color: var(--warning); }
+.talk-total.is-ok { color: var(--success); }
+
+.talk-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.talk-bar-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--success);
+  transition: width 220ms ease, background 220ms ease;
+}
+
+.talk-bar-fill.is-over { background: var(--danger); }
+.talk-bar-fill.is-short { background: var(--warning); }
+
+.talk-selection {
+  font-size: 13.5px;
+  font-weight: 560;
+  color: var(--text);
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  word-break: break-word;
+}
+
+.talk-selection.is-empty { color: var(--text-soft); font-weight: 400; }
+
+.talk-sub { margin: 0; font-size: 12px; color: var(--text-soft); }
+
+.talk-label {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+#talk-note,
+#talk-link,
+#talk-link-custom {
+  font: inherit;
+  font-size: 13px;
+  width: 100%;
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  resize: vertical;
+}
+
+#talk-note:disabled { opacity: 0.5; }
+
+.ref-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+
+.ref-list:empty::after {
+  content: 'No scripture references found yet.';
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+
+.ref-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.ref-row:hover { background: var(--accent-soft); }
+
+.ref-cite {
+  font-weight: 600;
+  color: var(--scripture);
+  white-space: nowrap;
+}
+
+.ref-where {
+  color: var(--text-soft);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn.block { width: 100%; justify-content: center; }
+
+/* ------------------------------------------------------------------ print */
+.print-view { display: none; }
+
+@media print {
+  .topbar,
+  .workspace,
+  .node-toolbar,
+  .zoom-controls,
+  .toast,
+  dialog { display: none !important; }
+
+  body { overflow: visible; background: #fff; }
+
+  .print-view {
+    display: block;
+    padding: 0;
+    color: #000;
+    font-size: 11.5pt;
+    line-height: 1.5;
+  }
+
+  .print-title { font-size: 20pt; margin: 0 0 2pt; }
+  .print-meta { font-size: 10pt; color: #555; margin: 0 0 18pt; }
+
+  .print-item { break-inside: avoid; margin: 0 0 3pt; }
+  .print-item .print-row { display: flex; gap: 10pt; align-items: baseline; }
+  .print-text { flex: 1; }
+  .print-time { font-variant-numeric: tabular-nums; color: #444; white-space: nowrap; }
+  /* Only section headings and scripture are bold: indentation carries the
+     rest of the structure, so bold keeps meaning something. */
+  .print-depth-1 { font-weight: 700; font-size: 13pt; margin-top: 12pt; }
+  .print-note {
+    font-size: 10pt;
+    color: #444;
+    border-left: 2pt solid #bbb;
+    padding-left: 8pt;
+    margin: 2pt 0 4pt;
+    white-space: pre-wrap;
+  }
+  .print-scripture { font-weight: 700; }
 }

@@ -9,8 +9,8 @@ export const FONT_STACK =
 // Everything below it is bare text, so its padding is really just the gap
 // between the connector and the first letter, plus a comfortable hit area.
 const BASE_NODE_STYLES = [
-  { fontSize: 19, fontWeight: 600, maxWidth: 280, padX: 20, padY: 13, minHeight: 46, radius: 12 },
-  { fontSize: 14.5, fontWeight: 500, maxWidth: 260, padX: 11, padY: 7, minHeight: 28, radius: 6 },
+  { fontSize: 19, fontWeight: 600, maxWidth: 280, padX: 16, padY: 9, minHeight: 38, radius: 10 },
+  { fontSize: 14.5, fontWeight: 500, maxWidth: 260, padX: 9, padY: 4, minHeight: 23, radius: 6 },
 ];
 
 /**

@@ -43,15 +43,19 @@ export function createRenderer(svg) {
       const badgeCircle = svgEl('circle', { class: 'node-badge-circle', r: 9 });
       const badgeText = svgEl('text', { class: 'node-badge-text' });
       badge.append(badgeCircle, badgeText);
-      group.append(card, hit, highlight, text, badge);
+      // Two handles: out to the side adds a child, below adds a sibling.
+      // Each has a generous invisible disc behind it so it is easy to hit.
+      const childHandle = handleEl('child');
+      const siblingHandle = handleEl('sibling');
+      group.append(card, hit, highlight, text, badge, childHandle, siblingHandle);
       nodeLayer.append(group);
-      entry = { group, hit, card, highlight, text, badge, badgeText };
+      entry = { group, hit, card, highlight, text, badge, badgeText, childHandle, siblingHandle };
       nodeEls.set(box.id, entry);
       group.classList.add('is-entering');
       requestAnimationFrame(() => group.classList.remove('is-entering'));
     }
 
-    const { group, hit, card, highlight, text, badge, badgeText } = entry;
+    const { group, hit, card, highlight, text, badge, badgeText, childHandle, siblingHandle } = entry;
     group.setAttribute('transform', `translate(${box.x}, ${box.y})`);
     group.setAttribute('data-depth', Math.min(box.depth, 1));
     group.classList.toggle('is-root', box.isRoot);
@@ -75,6 +79,15 @@ export function createRenderer(svg) {
 
     renderText(text, box);
 
+    // Children grow away from the root, so the child handle follows the side.
+    const childX = box.side === -1 ? -HANDLE_GAP : box.w + HANDLE_GAP;
+    childHandle.setAttribute('transform', `translate(${childX}, ${box.h / 2})`);
+    siblingHandle.setAttribute('transform', `translate(${box.w / 2}, ${box.h + HANDLE_GAP})`);
+    childHandle.style.setProperty('--handle-color', box.isRoot ? 'var(--accent)' : box.color);
+    siblingHandle.style.setProperty('--handle-color', box.isRoot ? 'var(--accent)' : box.color);
+    // The root has no siblings to add.
+    siblingHandle.style.display = box.isRoot ? 'none' : '';
+
     const showBadge = box.node.children.length > 0;
     badge.style.display = showBadge ? '' : 'none';
     if (showBadge) {
@@ -88,7 +101,10 @@ export function createRenderer(svg) {
 
   function renderText(text, box) {
     const { style } = box;
-    const key = [box.lines.join('\u0000'), box.w, box.h, style.fontSize, style.fontWeight, style.italic].join('|');
+    const key = [
+      box.lines.join('\u0000'), box.w, box.h, style.fontSize, style.fontWeight, style.italic,
+      box.segments ? 'talk' : 'plain', box.meta ?? '',
+    ].join('|');
     if (text.dataset.key === key) return;
     text.dataset.key = key;
     text.style.fontSize = `${style.fontSize}px`;
@@ -97,12 +113,25 @@ export function createRenderer(svg) {
     text.textContent = '';
     const top = (box.h - box.lines.length * box.lineHeight) / 2;
     box.lines.forEach((line, index) => {
-      const tspan = svgEl('tspan', {
-        x: style.padX,
-        y: Math.round(top + index * box.lineHeight + box.lineHeight * 0.76),
+      const y = Math.round(top + index * box.lineHeight + box.lineHeight * 0.76);
+      const runs = box.segments?.[index] ?? [{ text: line, reference: null }];
+      runs.forEach((run, runIndex) => {
+        // Only the first run on a line is positioned; the rest flow after it.
+        const tspan = runIndex === 0 ? svgEl('tspan', { x: style.padX, y }) : svgEl('tspan', {});
+        if (run.reference) {
+          tspan.setAttribute('class', 'scripture');
+          tspan.dataset.reference = run.reference.canonical;
+        }
+        tspan.textContent = run.text;
+        text.append(tspan);
       });
-      tspan.textContent = line;
-      text.append(tspan);
+
+      // The time and note marker trail the last line, inside the box.
+      if (box.meta && index === box.lines.length - 1) {
+        const metaSpan = svgEl('tspan', { class: 'node-meta' });
+        metaSpan.textContent = `  ${box.meta}`;
+        text.append(metaSpan);
+      }
     });
   }
 
@@ -141,6 +170,8 @@ export function createRenderer(svg) {
     group.setAttribute('transform', `translate(${edge.label.x}, ${edge.label.y})`);
     group.classList.toggle('is-editing', state.editingLabelId === edge.id);
     setRect(bg, -edge.label.w / 2, -edge.label.h / 2, edge.label.w, edge.label.h, 5);
+    // Inline, so it travels with the element into an exported SVG.
+    text.style.fill = edge.label.color;
     if (text.dataset.key !== edge.label.text) {
       text.dataset.key = edge.label.text;
       text.textContent = edge.label.text;
@@ -178,18 +209,31 @@ export function createRenderer(svg) {
     }
   }
 
-  function setDropIndicator(box) {
+  /**
+   * @param {{kind:'child'|'before'|'after', box: object}|null} target
+   */
+  function setDropIndicator(target) {
     overlayLayer.textContent = '';
-    if (!box) return;
+    if (!target) return;
+    const { kind, box } = target;
+    if (kind === 'child') {
+      overlayLayer.append(
+        svgEl('rect', {
+          class: 'drop-indicator',
+          x: box.x - 5,
+          y: box.y - 4,
+          width: box.w + 10,
+          height: box.h + 8,
+          rx: box.style.radius + 4,
+        }),
+      );
+      return;
+    }
+    // A line where the node would be inserted among its new siblings.
+    const y = kind === 'before' ? box.y - 5 : box.y + box.h + 5;
     overlayLayer.append(
-      svgEl('rect', {
-        class: 'drop-indicator',
-        x: box.x - 5,
-        y: box.y - 4,
-        width: box.w + 10,
-        height: box.h + 8,
-        rx: box.style.radius + 4,
-      }),
+      svgEl('line', { class: 'drop-line', x1: box.x - 4, y1: y, x2: box.x + box.w + 4, y2: y }),
+      svgEl('circle', { class: 'drop-line-cap', cx: box.x - 4, cy: y, r: 3 }),
     );
   }
 
@@ -201,6 +245,21 @@ export function createRenderer(svg) {
     getLayout: () => lastLayout,
     getNodeElement: (id) => nodeEls.get(id)?.group ?? null,
   };
+}
+
+const HANDLE_GAP = 13;
+
+function handleEl(kind) {
+  const group = svgEl('g', { class: `node-handle node-handle-${kind}`, 'data-handle': kind });
+  group.append(
+    svgEl('circle', { class: 'node-handle-hit', r: 13 }),
+    svgEl('circle', { class: 'node-handle-dot', r: 4.5 }),
+  );
+  const label = kind === 'child' ? 'Add a child' : 'Add a sibling';
+  const title = svgEl('title');
+  title.textContent = label;
+  group.append(title);
+  return group;
 }
 
 function setRect(rect, x, y, width, height, radius) {

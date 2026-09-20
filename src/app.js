@@ -13,6 +13,8 @@ import {
   clearState, clearVersions, getVersion, listVersions, loadState, pushVersion, relativeTime, saveState,
 } from './storage.js';
 import { copyText, download, markdownFor, slugify, toPngBlob, toSvgString } from './exporters.js';
+import { LINK_TEMPLATES, collectReferences, findReferences, referenceUrl } from './scripture.js';
+import { formatMinutes, rollup, rollupAll, summarise } from './timing.js';
 import {
   ensureExtension, openFile, parseFileContents, readDroppedFile, saveFileAs, serialiseDoc,
   supportsFileHandles, writeToHandle,
@@ -37,6 +39,18 @@ const ui = {
   history: el('history-dialog'),
   versionList: el('version-list'),
   confirm: el('confirm-dialog'),
+  talkTarget: el('talk-target'),
+  talkTotal: el('talk-total'),
+  talkBar: el('talk-bar-fill'),
+  talkSelection: el('talk-selection'),
+  talkMinutes: el('talk-minutes'),
+  talkRollup: el('talk-rollup'),
+  talkNote: el('talk-note'),
+  talkRefs: el('talk-refs'),
+  talkRefCount: el('talk-ref-count'),
+  talkLink: el('talk-link'),
+  talkLinkCustom: el('talk-link-custom'),
+  printView: el('print-view'),
 };
 
 const state = {
@@ -52,6 +66,11 @@ const state = {
   // The file this map belongs to, when it came from -- or has been saved to --
   // one. `handle` is only ever set where the browser supports file handles.
   file: { handle: null, name: '', dirty: false },
+  // Talk preparation: timings, scripture references and speaker notes.
+  talkMode: false,
+  talkTarget: 0,
+  linkPreset: 'none',
+  linkCustom: '',
 };
 
 const saved = loadState();
@@ -79,7 +98,7 @@ editor = createInlineEditor(ui.wrap, {
 // ------------------------------------------------------------------ render
 
 function refresh({ syncOutline = true } = {}) {
-  layout = computeLayout(doc.root, { mode: state.mode });
+  layout = computeLayout(doc.root, { mode: state.mode, talkMode: state.talkMode });
   const editing = editor?.editing();
   state.editingId = editing?.kind === 'node' ? editing.id : null;
   state.editingLabelId = editing?.kind === 'label' ? editing.edgeId : null;
@@ -88,6 +107,7 @@ function refresh({ syncOutline = true } = {}) {
   positionToolbar();
   updateChrome();
   updateFileChrome();
+  updateTalkPanel();
   if (syncOutline) writeOutline();
   scheduleSave();
 }
@@ -97,6 +117,184 @@ function updateChrome() {
   el('btn-redo').disabled = !doc.canRedo();
   for (const button of document.querySelectorAll('.seg')) {
     button.setAttribute('aria-pressed', String(button.dataset.mode === state.mode));
+  }
+  el('btn-talk').setAttribute('aria-pressed', String(state.talkMode));
+  document.body.classList.toggle('is-talk-mode', state.talkMode);
+}
+
+// -------------------------------------------------------------- talk mode
+
+function setTalkMode(on) {
+  state.talkMode = on;
+  if (on) showPanel('talk');
+  refresh({ syncOutline: false });
+  scheduleSave();
+}
+
+function showPanel(which) {
+  for (const [tab, panel] of [['tab-outline', 'panel-outline'], ['tab-talk', 'panel-talk']]) {
+    const selected = tab === `tab-${which}`;
+    el(tab).setAttribute('aria-selected', String(selected));
+    el(panel).hidden = !selected;
+  }
+  if (ui.sidebar.hidden) setSidebar(true);
+}
+
+function linkTemplate() {
+  if (state.linkPreset === 'custom') return state.linkCustom.trim() || null;
+  return LINK_TEMPLATES.find((entry) => entry.id === state.linkPreset)?.template ?? null;
+}
+
+function updateTalkPanel() {
+  if (el('panel-talk').hidden && !state.talkMode) return;
+
+  const summary = summarise(doc.root, state.talkTarget);
+  ui.talkTotal.textContent = summary.timed === 0
+    ? 'No timings yet'
+    : state.talkTarget > 0
+      ? `${formatMinutes(summary.total)} of ${formatMinutes(state.talkTarget)}` +
+        (summary.over > 0 ? ` — ${formatMinutes(summary.over)} over` : '')
+      : formatMinutes(summary.total);
+  ui.talkTotal.className = `talk-total is-${summary.status === 'untargeted' ? 'ok' : summary.status}`;
+
+  const fraction = state.talkTarget > 0 ? Math.min(1.2, summary.total / state.talkTarget) : 0;
+  ui.talkBar.style.width = `${Math.min(100, fraction * 100)}%`;
+  ui.talkBar.className = `talk-bar-fill is-${summary.status === 'untargeted' ? 'ok' : summary.status}`;
+
+  // The selected part.
+  const node = state.selectedId ? doc.get(state.selectedId) : null;
+  ui.talkSelection.textContent = node ? node.text || 'Untitled' : 'Select a node on the map.';
+  ui.talkSelection.classList.toggle('is-empty', !node);
+  ui.talkMinutes.disabled = !node;
+  ui.talkNote.disabled = !node;
+  if (document.activeElement !== ui.talkMinutes) ui.talkMinutes.value = node?.minutes ?? '';
+  if (document.activeElement !== ui.talkNote) ui.talkNote.value = node?.note ?? '';
+  if (node) {
+    const parts = rollup(node);
+    ui.talkRollup.textContent = node.children.length === 0
+      ? ''
+      : parts.own !== null
+        ? `Its parts add up to ${formatMinutes(parts.children)}, but this section is set to ${formatMinutes(parts.own)}.`
+        : `Adds up from its parts: ${formatMinutes(parts.children)}.`;
+  } else {
+    ui.talkRollup.textContent = '';
+  }
+
+  renderReferenceList();
+}
+
+function renderReferenceList() {
+  const found = collectReferences(doc.root);
+  ui.talkRefCount.textContent = found.length ? `(${found.length})` : '';
+  ui.talkRefs.textContent = '';
+  const seen = new Set();
+  for (const { node, reference } of found) {
+    const key = `${reference.canonical}|${node.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const row = document.createElement('li');
+    row.className = 'ref-row';
+    // Shown as you wrote it -- the canonical English form is only needed for
+    // the link. Context is added only when the node says more than the
+    // reference itself.
+    const cite = document.createElement('span');
+    cite.className = 'ref-cite';
+    cite.textContent = reference.text;
+    row.append(cite);
+    const context = node.text.trim() === reference.text.trim() ? '' : node.text;
+    if (context) {
+      const where = document.createElement('span');
+      where.className = 'ref-where';
+      where.textContent = context;
+      row.append(where);
+    }
+    row.title = linkTemplate() ? `Open ${reference.canonical}` : `Go to "${node.text}"`;
+    row.addEventListener('click', () => {
+      const url = referenceUrl(reference, linkTemplate());
+      if (url) window.open(url, '_blank', 'noopener');
+      else select(node.id, { reveal: true });
+    });
+    ui.talkRefs.append(row);
+  }
+}
+
+/** Builds the printable outline and hands it to the browser's print dialog. */
+function printOutline() {
+  const timings = rollupAll(doc.root);
+  const summary = summarise(doc.root, state.talkTarget);
+  ui.printView.textContent = '';
+
+  const title = document.createElement('h1');
+  title.className = 'print-title';
+  title.textContent = doc.root.text || 'Untitled talk';
+  const meta = document.createElement('p');
+  meta.className = 'print-meta';
+  const bits = [];
+  if (summary.timed > 0) {
+    bits.push(state.talkTarget > 0
+      ? `Planned ${formatMinutes(summary.total)} of ${formatMinutes(state.talkTarget)}`
+      : `Planned ${formatMinutes(summary.total)}`);
+  }
+  const refCount = collectReferences(doc.root).length;
+  if (refCount) bits.push(`${refCount} scripture${refCount === 1 ? '' : 's'}`);
+  const printed = new Date().toLocaleDateString();
+  bits.push(printed);
+  meta.textContent = bits.join(' · ');
+  ui.printView.append(title, meta);
+
+  const write = (node, depth) => {
+    for (const child of node.children) {
+      const item = document.createElement('div');
+      item.className = `print-item print-depth-${Math.min(depth, 3)}`;
+      item.style.marginLeft = `${(depth - 1) * 16}pt`;
+
+      const row = document.createElement('div');
+      row.className = 'print-row';
+      const text = document.createElement('div');
+      text.className = 'print-text';
+      // Scripture references are set in bold so they are findable at a glance.
+      let cursor = 0;
+      for (const reference of findReferences(child.text)) {
+        if (reference.start > cursor) text.append(child.text.slice(cursor, reference.start));
+        const strong = document.createElement('span');
+        strong.className = 'print-scripture';
+        strong.textContent = reference.text;
+        text.append(strong);
+        cursor = reference.end;
+      }
+      text.append(child.text.slice(cursor));
+
+      row.append(text);
+      const minutes = timings.get(child.id)?.total ?? 0;
+      if (minutes > 0) {
+        const time = document.createElement('div');
+        time.className = 'print-time';
+        time.textContent = formatMinutes(minutes);
+        row.append(time);
+      }
+      item.append(row);
+
+      if (child.note?.trim()) {
+        const note = document.createElement('div');
+        note.className = 'print-note';
+        note.textContent = child.note.trim();
+        item.append(note);
+      }
+      ui.printView.append(item);
+      write(child, depth + 1);
+    }
+  };
+  write(doc.root, 1);
+
+  window.print();
+}
+
+function buildLinkOptions() {
+  for (const entry of LINK_TEMPLATES) {
+    const option = document.createElement('option');
+    option.value = entry.id;
+    option.textContent = entry.name;
+    ui.talkLink.append(option);
   }
 }
 
@@ -113,6 +311,7 @@ function positionToolbar() {
   const y = anchor.y - wrapRect.top - 12;
   ui.toolbar.hidden = y < 50 || y > wrapRect.height;
   if (ui.toolbar.hidden) return;
+  ui.toolbar.classList.remove('is-away'); // a fresh selection always shows it
   ui.toolbar.style.left = `${x}px`;
   ui.toolbar.style.top = `${y}px`;
   syncToolbarState(doc.get(state.selectedId), box);
@@ -646,13 +845,23 @@ function nodeIdFromEvent(event) {
 }
 
 ui.canvas.addEventListener('pointerdown', (event) => {
-  if (event.button !== 0) return;
+  if (event.button !== 0 || viewport.modifiers.spaceHeld) return;
   const id = nodeIdFromEvent(event);
   if (!id) {
     if (!editor.isOpen()) {
       state.selectedId = null;
       refresh({ syncOutline: false });
     }
+    return;
+  }
+  const handle = event.target.closest('.node-handle');
+  if (handle) {
+    event.preventDefault();
+    const kind = handle.dataset.handle;
+    // Clicking a handle while typing blurs the editor, which commits the
+    // text; the new node is added after that has settled.
+    if (editor.isOpen()) editor.close({ commit: true });
+    setTimeout(() => (kind === 'child' ? addChild(id) : addSibling(id)), 0);
     return;
   }
   if (event.target.closest('.node-badge')) {
@@ -666,6 +875,33 @@ ui.canvas.addEventListener('pointerdown', (event) => {
     refresh({ syncOutline: false });
   }
   beginDrag(event, id);
+});
+
+// The toolbar floats over the map, so it can sit on top of other nodes. When
+// the mouse moves away from it, it gets out of the way: without this, aiming
+// at a node behind the toolbar hits a toolbar button instead, which would
+// quietly format the node you had selected before.
+ui.wrap.addEventListener('pointermove', (event) => {
+  if (event.pointerType !== 'mouse' || ui.toolbar.hidden) return;
+  const rect = ui.toolbar.getBoundingClientRect();
+  const dx = Math.max(rect.left - event.clientX, 0, event.clientX - rect.right);
+  const dy = Math.max(rect.top - event.clientY, 0, event.clientY - rect.bottom);
+  ui.toolbar.classList.toggle('is-away', Math.hypot(dx, dy) > 90);
+});
+
+// A scripture reference on the map opens in the chosen Bible site.
+ui.canvas.addEventListener('click', (event) => {
+  const cite = event.target.closest('.scripture');
+  if (!cite) return;
+  const template = linkTemplate();
+  if (!template) {
+    showToast('Pick where to open references in the Talk panel');
+    showPanel('talk');
+    return;
+  }
+  const [reference] = findReferences(cite.dataset.reference ?? '');
+  const url = referenceUrl(reference, template);
+  if (url) window.open(url, '_blank', 'noopener');
 });
 
 ui.canvas.addEventListener('dblclick', (event) => {
@@ -683,6 +919,7 @@ function beginDrag(event, id) {
   if (id === doc.root.id) return; // the root anchors the map
   const origin = { x: event.clientX, y: event.clientY };
   let active = false;
+  let dropped = null;
 
   const move = (moveEvent) => {
     if (!active && Math.hypot(moveEvent.clientX - origin.x, moveEvent.clientY - origin.y) < 5) return;
@@ -691,22 +928,21 @@ function beginDrag(event, id) {
       state.draggingId = id;
       ui.toolbar.hidden = true;
     }
-    const target = hitTest(moveEvent.clientX, moveEvent.clientY, id);
-    state.dropTargetId = target?.id ?? null;
+    const target = dropTarget(moveEvent.clientX, moveEvent.clientY, id);
+    state.dropTargetId = target?.kind === 'child' ? target.box.id : null;
+    dropped = target;
     renderer.render(layout, state);
-    renderer.setDropIndicator(target ?? null);
+    renderer.setDropIndicator(target);
   };
 
   const up = () => {
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
-    const targetId = state.dropTargetId;
+    const target = dropped;
     state.draggingId = null;
     state.dropTargetId = null;
-    if (active && targetId && targetId !== id) {
-      const moved = doc.move(id, targetId);
-      if (!moved) showToast('A node cannot be moved inside itself');
-    }
+    dropped = null;
+    if (active && target) applyDrop(id, target);
     renderer.setDropIndicator(null);
     refresh();
   };
@@ -715,19 +951,57 @@ function beginDrag(event, id) {
   window.addEventListener('pointerup', up);
 }
 
-/** Node under the cursor, skipping the dragged node's own subtree. */
-function hitTest(clientX, clientY, excludeSubtreeOf) {
+/**
+ * Where a drag would land. Over the middle of a node makes the dragged node
+ * its child; near the top or bottom edge drops it above or below that node as
+ * a sibling, which is what lets you put a card anywhere, not just deeper.
+ *
+ * @returns {{kind:'child'|'before'|'after', box: object}|null}
+ */
+function dropTarget(clientX, clientY, draggingId) {
   const point = viewport.toWorld(clientX, clientY);
+  const margin = 14; // a little forgiveness around each box
   for (const box of layout.nodes) {
-    if (excludeSubtreeOf && doc.contains(excludeSubtreeOf, box.id)) continue;
-    if (point.x >= box.x && point.x <= box.x + box.w && point.y >= box.y && point.y <= box.y + box.h) {
-      return box;
-    }
+    if (draggingId && doc.contains(draggingId, box.id)) continue;
+    const inside = point.x >= box.x - margin && point.x <= box.x + box.w + margin
+      && point.y >= box.y - margin && point.y <= box.y + box.h + margin;
+    if (!inside) continue;
+    // The root has no siblings, so it can only take children.
+    if (box.isRoot) return { kind: 'child', box };
+    const fraction = (point.y - box.y) / box.h;
+    if (fraction < 0.3) return { kind: 'before', box };
+    if (fraction > 0.7) return { kind: 'after', box };
+    return { kind: 'child', box };
   }
   return null;
 }
 
+function applyDrop(id, target) {
+  const { kind, box } = target;
+  if (kind === 'child') {
+    if (box.id === id) return;
+    if (!doc.move(id, box.id)) showToast('A node cannot be moved inside itself');
+    return;
+  }
+  const parent = doc.parentOf(box.id);
+  if (!parent) return;
+  const index = doc.indexOf(box.id) + (kind === 'after' ? 1 : 0);
+  if (!doc.move(id, parent.id, index)) showToast('A node cannot be moved inside itself');
+}
+
 // --------------------------------------------------------------- keyboard
+
+function setPanMode(on) {
+  if (viewport.modifiers.spaceHeld === on) return;
+  viewport.modifiers.spaceHeld = on;
+  ui.canvas.classList.toggle('is-pan-ready', on);
+}
+
+document.addEventListener('keyup', (event) => {
+  if (event.code === 'Space' || event.key === ' ') setPanMode(false);
+});
+// A lost keyup (tab away mid-drag) would leave the canvas stuck in pan mode.
+window.addEventListener('blur', () => setPanMode(false));
 
 document.addEventListener('keydown', (event) => {
   const target = event.target;
@@ -749,6 +1023,16 @@ document.addEventListener('keydown', (event) => {
     refresh();
     return;
   }
+  if (mod && event.key.toLowerCase() === 't') {
+    event.preventDefault();
+    setTalkMode(!state.talkMode);
+    return;
+  }
+  if (mod && event.key.toLowerCase() === 'p') {
+    event.preventDefault();
+    printOutline();
+    return;
+  }
   if (mod && event.key.toLowerCase() === 'o') {
     event.preventDefault();
     openFromFile();
@@ -760,6 +1044,13 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   if (typing || editor.isOpen()) return;
+
+  // Hold space to pan, the way every canvas tool does it.
+  if (event.code === 'Space' || event.key === ' ') {
+    event.preventDefault(); // stop the page scrolling under us
+    setPanMode(true);
+    return;
+  }
 
   // Formatting works on the selected node without opening the editor.
   if (mod && state.selectedId && ['b', 'i', 'h', 'l'].includes(event.key.toLowerCase())) {
@@ -792,7 +1083,7 @@ document.addEventListener('keydown', (event) => {
   const onCanvas = target === document.body || ui.canvas.contains(target);
   if (!onCanvas) return;
 
-  if (!state.selectedId && ['Tab', 'Enter', ' ', 'Delete', 'Backspace', 'F2'].includes(event.key)) {
+  if (!state.selectedId && ['Tab', 'Enter', '.', 'Delete', 'Backspace', 'F2'].includes(event.key)) {
     state.selectedId = doc.root.id;
   }
 
@@ -814,7 +1105,7 @@ document.addEventListener('keydown', (event) => {
       event.preventDefault();
       deleteSelected();
       break;
-    case ' ':
+    case '.':
       event.preventDefault();
       if (state.selectedId) {
         doc.toggleCollapse(state.selectedId);
@@ -1052,6 +1343,39 @@ function bindChrome() {
   for (const button of document.querySelectorAll('.seg')) {
     button.addEventListener('click', () => setMode(button.dataset.mode));
   }
+  el('btn-talk').addEventListener('click', () => setTalkMode(!state.talkMode));
+  el('tab-outline').addEventListener('click', () => showPanel('outline'));
+  el('tab-talk').addEventListener('click', () => showPanel('talk'));
+  el('btn-print').addEventListener('click', printOutline);
+
+  ui.talkTarget.addEventListener('input', () => {
+    state.talkTarget = Math.max(0, Number(ui.talkTarget.value) || 0);
+    updateTalkPanel();
+    scheduleSave();
+  });
+  ui.talkMinutes.addEventListener('change', () => {
+    if (!state.selectedId) return;
+    doc.setMinutes(state.selectedId, Number(ui.talkMinutes.value));
+    refresh({ syncOutline: false });
+  });
+  // Notes commit on blur so every keystroke is not its own undo step.
+  ui.talkNote.addEventListener('blur', () => {
+    if (!state.selectedId) return;
+    doc.setNote(state.selectedId, ui.talkNote.value);
+    refresh({ syncOutline: false });
+  });
+  ui.talkLink.addEventListener('change', () => {
+    state.linkPreset = ui.talkLink.value;
+    ui.talkLinkCustom.hidden = state.linkPreset !== 'custom';
+    renderReferenceList();
+    scheduleSave();
+  });
+  ui.talkLinkCustom.addEventListener('input', () => {
+    state.linkCustom = ui.talkLinkCustom.value;
+    renderReferenceList();
+    scheduleSave();
+  });
+
   el('btn-generate').addEventListener('click', generateFromOutline);
   ui.outline.addEventListener('input', () => {
     state.outlineDirty = true;
@@ -1147,6 +1471,12 @@ function bindChrome() {
       theme: state.theme,
       mode: state.mode,
       file: { name: state.file.name, dirty: state.file.dirty },
+      talk: {
+        mode: state.talkMode,
+        target: state.talkTarget,
+        linkPreset: state.linkPreset,
+        linkCustom: state.linkCustom,
+      },
     });
     pushVersion(doc.toJSON());
     // Only warn when a file is involved: without one, autosave has it covered.
@@ -1162,6 +1492,7 @@ function bindChrome() {
 function boot() {
   doc.onChange(markDirty);
   buildSwatches();
+  buildLinkOptions();
   buildSampleSelect();
   bindChrome();
   applyTheme(saved?.theme ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
@@ -1169,6 +1500,17 @@ function boot() {
   setSidebar(window.innerWidth >= NARROW, { refit: false });
   ui.outline.value = toOutline(doc.root);
   setFile(saved?.file ?? { name: '', dirty: false });
+
+  const talk = saved?.talk ?? {};
+  state.talkMode = Boolean(talk.mode);
+  state.talkTarget = Number(talk.target) || 0;
+  state.linkPreset = LINK_TEMPLATES.some((entry) => entry.id === talk.linkPreset) ? talk.linkPreset : 'none';
+  state.linkCustom = String(talk.linkCustom ?? '');
+  ui.talkTarget.value = state.talkTarget || '';
+  ui.talkLink.value = state.linkPreset;
+  ui.talkLinkCustom.value = state.linkCustom;
+  ui.talkLinkCustom.hidden = state.linkPreset !== 'custom';
+  if (state.talkMode) showPanel('talk');
   bindFileDrop();
   refresh();
   fitMap({ animate: false });
