@@ -161,6 +161,26 @@ function showPanel(which) {
 // The last handoff attempted, for the console when a link does not behave.
 let lastVerseLink = null;
 
+// Handing a verse to an app is not the page being abandoned, but the browser
+// cannot tell the difference: setting location fires the unsaved-changes
+// prompt. Clicking a link keeps that quieter, and this window covers the rest.
+let handingOffUntil = 0;
+
+function launchApp(url) {
+  handingOffUntil = Date.now() + 4000;
+  const link = document.createElement('a');
+  link.href = url;
+  link.rel = 'noopener';
+  link.style.display = 'none';
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+function isHandingOff() {
+  return Date.now() < handingOffUntil;
+}
+
 /** The address template for whatever tapping a verse should do. */
 function verseTemplate() {
   if (state.verseAction === 'custom') return state.verseCustom.trim() || null;
@@ -205,7 +225,7 @@ function openReference(reference, { node = null, label = null } = {}) {
   // stays put, so the fallback is offered straight away rather than guessed at.
   const web = jwUrl(reference, { template: JW_WEB, locale });
   lastVerseLink = { reference: reference.canonical, app: url, web };
-  window.location.href = url;
+  launchApp(url);
   showToast(`Opening ${label ?? reference.text} in JW Library.`, 7000,
     web ? { text: 'Not installed? Open on jw.org', href: web } : null);
 }
@@ -1694,8 +1714,10 @@ function bindChrome() {
       },
     });
     pushVersion(doc.toJSON());
-    // Only warn when a file is involved: without one, autosave has it covered.
-    if (state.file.name && state.file.dirty) {
+    // Only warn when a file is involved -- without one, autosave has it
+    // covered -- and never for a verse being handed to JW Library, which is
+    // not the page going anywhere.
+    if (state.file.name && state.file.dirty && !isHandingOff()) {
       event.preventDefault();
       event.returnValue = '';
     }

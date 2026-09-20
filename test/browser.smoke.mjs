@@ -560,6 +560,18 @@ try {
     && await page.evaluate(() => document.getElementById('canvas-timer').hidden));
 
   // Tapping a verse hands it to JW Library.
+  // First make sure the unsaved-changes guard is actually armed, so the check
+  // below is not vacuous: it has to be capable of firing.
+  const guardArmed = await page.evaluate(() => {
+    // Marks the file unsaved without altering a word of it: bold on, bold off.
+    const doc = window.mindmapper.doc;
+    const id = doc.root.children[0].id;
+    doc.toggleFormat(id, 'bold');
+    doc.toggleFormat(id, 'bold');
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
   await page.selectOption('#talk-locale', 'KO');
   await page.waitForTimeout(200);
   await page.click('.node .scripture');
@@ -567,6 +579,21 @@ try {
   const handoff = await page.evaluate(() => window.mindmapper.lastVerseLink?.app ?? null);
   check('a verse is handed to JW Library, numbered and localised',
     handoff === 'jwlibrary:///finder?bible=01023002&wtlocale=KO&pub=nwtsty', String(handoff));
+  // Handing a verse to the app must not trip the unsaved-changes prompt: it
+  // is not the page being left.
+  const prompts = await page.evaluate(() => {
+    const fire = () => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    const duringHandoff = fire();
+    return { duringHandoff };
+  });
+  check('handing a verse to the app does not ask to leave the site',
+    guardArmed === true && prompts.duringHandoff === false,
+    `guard armed: ${guardArmed}, prompted during handoff: ${prompts.duringHandoff}`);
+
   check('a way through to jw.org is offered, since the handoff cannot be confirmed',
     await page.evaluate(() => {
       const link = document.querySelector('#toast .toast-link');
