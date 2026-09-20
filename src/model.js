@@ -255,13 +255,14 @@ export class MindMapDoc {
     return amend ? this.amend(apply) : this.transact(apply);
   }
 
-  setNote(id, note) {
+  setNote(id, note, { amend = false } = {}) {
     const node = this.get(id);
     if (!node || node.note === note) return null;
-    return this.transact(() => {
+    const apply = () => {
       node.note = note;
       return node;
-    });
+    };
+    return amend ? this.amend(apply) : this.transact(apply);
   }
 
   /** Toggles bold or italic on a node. */
@@ -285,15 +286,16 @@ export class MindMapDoc {
   }
 
   /** Sets how many minutes this part of the talk should take (null clears). */
-  setMinutes(id, minutes) {
+  setMinutes(id, minutes, { amend = false } = {}) {
     const node = this.get(id);
     if (!node) return null;
     const value = Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes * 10) / 10 : null;
     if (node.minutes === value) return null;
-    return this.transact(() => {
+    const apply = () => {
       node.minutes = value;
       return node;
-    });
+    };
+    return amend ? this.amend(apply) : this.transact(apply);
   }
 
   /** Labels the line that runs from this node's parent into it. */

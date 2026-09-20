@@ -103,6 +103,18 @@
           </section>
 
           <section class="talk-block">
+            <h3 class="talk-heading">Rehearse</h3>
+            <div class="timer-row">
+              <div class="timer-clock" id="timer-clock">0:00</div>
+              <div class="timer-buttons">
+                <button type="button" class="btn small" id="btn-timer">Start</button>
+                <button type="button" class="btn ghost small" id="btn-timer-reset">Reset</button>
+              </div>
+            </div>
+            <p class="talk-sub" id="timer-note">Counts up while you practise, against the time you have.</p>
+          </section>
+
+          <section class="talk-block">
             <h3 class="talk-heading">Selected part</h3>
             <div id="talk-selection" class="talk-selection">Select a node on the map.</div>
             <label class="talk-field">
@@ -118,9 +130,12 @@
           <section class="talk-block">
             <h3 class="talk-heading">Scriptures <span class="talk-count" id="talk-ref-count"></span></h3>
             <ul class="ref-list" id="talk-refs"></ul>
-            <label class="talk-label" for="talk-link">Open references in</label>
+            <label class="talk-label" for="talk-link">Tapping a verse</label>
             <select id="talk-link"></select>
             <input type="url" id="talk-link-custom" placeholder="https://example.org/search?q={ref}" hidden />
+            <label class="talk-label" for="talk-wol-lang" id="talk-wol-lang-label">Library language</label>
+            <select id="talk-wol-lang"></select>
+            <input type="url" id="talk-wol-custom" placeholder="https://wol.jw.org/…/lp-xx?q={ref}" hidden />
           </section>
 
           <button type="button" class="btn primary block" id="btn-print">Print / PDF outline</button>
@@ -174,7 +189,25 @@
           <button type="button" class="btn icon" id="btn-fit" title="Fit to screen (Shift+F)" aria-label="Fit to screen">&#9974;</button>
         </div>
 
+        <aside class="verse-panel" id="verse-panel" hidden aria-label="Scripture">
+          <header class="verse-head">
+            <span class="verse-cite" id="verse-cite"></span>
+            <div class="verse-actions">
+              <button type="button" class="btn ghost small" id="btn-verse-open" title="Open in a new tab">Open&nbsp;&#8599;</button>
+              <button type="button" class="btn ghost small" id="btn-verse-close" aria-label="Close">&#10005;</button>
+            </div>
+          </header>
+          <div class="verse-body">
+            <iframe id="verse-frame" title="Scripture" referrerpolicy="no-referrer"></iframe>
+          </div>
+          <p class="verse-fallback">
+            Blank? Some libraries refuse to be shown inside another page — use
+            <strong>Open&nbsp;&#8599;</strong>.
+          </p>
+        </aside>
+
         <button type="button" class="sidebar-reveal" id="btn-show-sidebar" hidden>Outline</button>
+        <div class="canvas-timer" id="canvas-timer" hidden><span id="canvas-timer-clock">0:00</span></div>
         <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
       </div>
     </main>

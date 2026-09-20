@@ -150,9 +150,23 @@ export function segmentLine(line) {
   return segments;
 }
 
+/**
+ * Watchtower Online Library languages.
+ *
+ * Each WOL language has its own path prefix and library ids. These two were
+ * taken from the site's own addresses; if yours is different, open wol.jw.org
+ * in your language and paste its address into the custom option.
+ */
+export const WOL_LANGUAGES = [
+  { id: 'en', name: 'English', template: 'https://wol.jw.org/en/wol/l/r1/lp-e?q={ref}' },
+  { id: 'ko', name: '한국어 (Korean)', template: 'https://wol.jw.org/ko/wol/l/r8/lp-ko?q={ref}' },
+  { id: 'custom', name: 'Other — paste an address…', template: '' },
+];
+
 /** Where to send a reference. `null` means references are not links. */
 export const LINK_TEMPLATES = [
-  { id: 'none', name: 'No links', template: null },
+  { id: 'wol', name: 'A panel on this page (wol.jw.org)', template: null },
+  { id: 'none', name: 'Do nothing', template: null },
   { id: 'biblegateway', name: 'BibleGateway', template: 'https://www.biblegateway.com/passage/?search={ref}' },
   { id: 'youversion', name: 'YouVersion', template: 'https://www.bible.com/search/bible?query={ref}' },
   { id: 'blueletter', name: 'Blue Letter Bible', template: 'https://www.blueletterbible.org/search/search.cfm?Criteria={ref}' },

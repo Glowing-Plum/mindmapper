@@ -2,7 +2,31 @@
 // a node's text or a label on a connector -- styled to match, so typing feels
 // like editing the thing itself.
 
-import { FONT_STACK } from './measure.js';
+import { FONT_STACK, createMeasurer } from './measure.js';
+
+// The same measurements the layout uses, so a card is the size while you type
+// that it will be once you stop.
+const measure = createMeasurer();
+
+/**
+ * How big the box needs to be for `value`: wider as you type, up to the same
+ * maximum the layout wraps at, then taller as the text wraps.
+ */
+function sizeFor(target, value) {
+  if (!target.grows) return { w: target.w, h: target.h, lines: 1 };
+  const metrics = measure(value || ' ', {
+    fontSize: target.fontSize,
+    fontWeight: target.fontWeight,
+    italic: target.italic,
+    maxWidth: target.maxWidth,
+  });
+  const width = Math.max(target.minWidth, Math.min(metrics.width, target.maxWidth));
+  return {
+    w: Math.round(width + target.padX * 2),
+    h: Math.round(Math.max(target.minHeight, metrics.lines.length * target.lineHeight + target.padYStyle * 2)),
+    lines: metrics.lines.length,
+  };
+}
 
 /**
  * A target describes the world-space box to edit:
@@ -20,19 +44,30 @@ export function createInlineEditor(host, { onCommit, onCancel, onChord } = {}) {
 
   function place(target, viewport) {
     const k = viewport.state.k;
-    const topLeft = viewport.toScreen(target.x, target.y);
+    const { w, h, lines } = sizeFor(target, input.value);
+
+    // Grow away from the side the card is anchored on, so the text you are
+    // typing stays put: rightwards on the right of the map, leftwards on the
+    // left, and outwards from the middle for the root.
+    const anchor = target.side === -1 ? 1 : target.align === 'center' ? 0.5 : 0;
+    const x = target.x - (w - target.w) * anchor;
+    const y = target.y - (h - target.h) / 2; // stays vertically centred
+
+    const topLeft = viewport.toScreen(x, y);
     const hostRect = host.getBoundingClientRect();
+    // Centre the text in the box the same way the map does.
+    const padY = target.grows ? (h - lines * target.lineHeight) / 2 : target.padY;
     Object.assign(input.style, {
       left: `${topLeft.x - hostRect.left}px`,
       top: `${topLeft.y - hostRect.top}px`,
-      width: `${target.w * k}px`,
-      height: `${target.h * k}px`,
+      width: `${w * k}px`,
+      height: `${h * k}px`,
       fontSize: `${target.fontSize * k}px`,
       lineHeight: `${target.lineHeight * k}px`,
       fontWeight: String(target.fontWeight),
       fontStyle: target.italic ? 'italic' : 'normal',
       fontFamily: FONT_STACK,
-      padding: `${target.padY * k}px ${target.padX * k}px`,
+      padding: `${Math.max(0, padY) * k}px ${target.padX * k}px`,
       borderRadius: `${(target.radius ?? 6) * k}px`,
       textAlign: target.align ?? 'left',
     });
@@ -81,6 +116,12 @@ export function createInlineEditor(host, { onCommit, onCancel, onChord } = {}) {
       const target = close({ commit: true });
       if (target) onChord?.('tab', target);
     }
+  });
+
+  // Resize as you type rather than scrolling inside a box fixed at the size
+  // the text used to be.
+  input.addEventListener('input', () => {
+    if (current) place(current.target, current.viewport);
   });
 
   input.addEventListener('blur', () => close({ commit: true }));

@@ -91,7 +91,10 @@ export function createRenderer(svg) {
     const showBadge = box.node.children.length > 0;
     badge.style.display = showBadge ? '' : 'none';
     if (showBadge) {
-      badge.setAttribute('transform', `translate(${box.side === -1 ? 2 : box.w - 2}, ${box.h / 2})`);
+      // Outboard of the child dot, so the two read in order from the node:
+      // first the dot that adds a child, then the button that closes the branch.
+      const badgeX = box.side === -1 ? -BADGE_GAP : box.w + BADGE_GAP;
+      badge.setAttribute('transform', `translate(${badgeX}, ${box.h / 2})`);
       badge.style.setProperty('--badge-color', box.color);
       badgeText.textContent = box.collapsed ? String(box.hiddenCount) : '−';
       badgeText.setAttribute('y', box.collapsed ? 3.5 : 4);
@@ -248,6 +251,9 @@ export function createRenderer(svg) {
 }
 
 const HANDLE_GAP = 13;
+// Far enough past the dot to clear it, and still inside the gap before the
+// children begin, so it never lands on a child.
+const BADGE_GAP = 34;
 
 function handleEl(kind) {
   const group = svgEl('g', { class: `node-handle node-handle-${kind}`, 'data-handle': kind });
