@@ -13,6 +13,10 @@ import {
   clearState, clearVersions, getVersion, listVersions, loadState, pushVersion, relativeTime, saveState,
 } from './storage.js';
 import { copyText, download, markdownFor, slugify, toPngBlob, toSvgString } from './exporters.js';
+import {
+  ensureExtension, openFile, parseFileContents, readDroppedFile, saveFileAs, serialiseDoc,
+  supportsFileHandles, writeToHandle,
+} from './files.js';
 
 const el = (id) => document.getElementById(id);
 
@@ -28,6 +32,7 @@ const ui = {
   toast: el('toast'),
   zoomLevel: el('btn-zoom-reset'),
   sampleSelect: el('sample-select'),
+  fileName: el('file-name'),
   help: el('help-dialog'),
   history: el('history-dialog'),
   versionList: el('version-list'),
@@ -44,6 +49,9 @@ const state = {
   theme: 'light',
   outlineDirty: false,
   newNodeId: null, // a node created by Tab/Enter, removed if left blank
+  // The file this map belongs to, when it came from -- or has been saved to --
+  // one. `handle` is only ever set where the browser supports file handles.
+  file: { handle: null, name: '', dirty: false },
 };
 
 const saved = loadState();
@@ -79,6 +87,7 @@ function refresh({ syncOutline = true } = {}) {
   renderer.setDropIndicator(state.dropTargetId ? layout.byId.get(state.dropTargetId) : null);
   positionToolbar();
   updateChrome();
+  updateFileChrome();
   if (syncOutline) writeOutline();
   scheduleSave();
 }
@@ -135,7 +144,12 @@ let versionTimer = null;
 function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    const ok = saveState({ doc: doc.toJSON(), theme: state.theme, mode: state.mode });
+    const ok = saveState({
+      doc: doc.toJSON(),
+      theme: state.theme,
+      mode: state.mode,
+      file: { name: state.file.name, dirty: state.file.dirty },
+    });
     if (!ok && !scheduleSave.warned) {
       scheduleSave.warned = true;
       showToast('This browser is blocking local storage — export to keep your work', 6000);
@@ -215,6 +229,137 @@ function confirmAction({ title, body, confirmLabel = 'Continue' }) {
     el('confirm-ok').textContent = confirmLabel;
     ui.confirm.addEventListener('close', () => resolve(ui.confirm.returnValue === 'confirm'), { once: true });
     ui.confirm.showModal();
+  });
+}
+
+// ------------------------------------------------------------------ files
+
+function updateFileChrome() {
+  const { name, dirty } = state.file;
+  ui.fileName.textContent = name || 'Not saved to a file';
+  ui.fileName.classList.toggle('is-file', Boolean(name));
+  ui.fileName.classList.toggle('is-dirty', Boolean(name) && dirty);
+  ui.fileName.title = name
+    ? `${name}${dirty ? ' — unsaved changes' : ' — saved'}`
+    : 'This map is autosaved in the browser only. Save it to a file to keep it.';
+  // Be honest about what the button will do in this browser.
+  const save = el('btn-save');
+  if (state.file.handle) {
+    save.textContent = 'Save';
+    save.title = `Save to ${name} (Ctrl+S)`;
+  } else if (supportsFileHandles()) {
+    save.textContent = 'Save…';
+    save.title = 'Choose where to save this map (Ctrl+S)';
+  } else {
+    save.textContent = 'Save a copy';
+    save.title = 'This browser downloads a copy rather than saving back to a file (Ctrl+S)';
+  }
+  document.title = name
+    ? `${dirty ? '• ' : ''}${name} — Mindmapper`
+    : 'Mindmapper — outline to mind map';
+}
+
+function setFile({ handle = null, name = '', dirty = false }) {
+  state.file = { handle, name, dirty };
+  updateFileChrome();
+}
+
+function markDirty() {
+  if (state.file.dirty) return;
+  state.file.dirty = true;
+  updateFileChrome();
+}
+
+/** Loads parsed file contents into the document. */
+function adoptFile({ name, text, handle }) {
+  const { kind, data } = parseFileContents(name, text);
+  checkpoint(`Before opening ${name}`);
+  const root = kind === 'json' ? MindMapDoc.fromJSON(data).root : data;
+  doc.replaceRoot(root);
+  state.selectedId = null;
+  setFile({ handle, name, dirty: false });
+  refresh();
+  fitMap();
+  const count = [...walk(root)].length;
+  if (window.innerWidth < NARROW) setSidebar(false);
+  showToast(`Opened ${name} — ${count} node${count === 1 ? '' : 's'}`);
+}
+
+async function openFromFile() {
+  try {
+    if (!(await confirmDiscardIfNeeded('Open another map?'))) return;
+    const file = await openFile();
+    if (!file) return; // cancelled
+    adoptFile(file);
+  } catch (error) {
+    console.warn('Could not open that file:', error);
+    showToast(error.message || 'That file could not be opened', 5000);
+  }
+}
+
+/** Ctrl+S: write back to the open file, or ask where to put it the first time. */
+async function saveToFile({ saveAs = false } = {}) {
+  const text = serialiseDoc(doc.toJSON());
+  try {
+    if (!saveAs && state.file.handle) {
+      await writeToHandle(state.file.handle, text);
+      setFile({ ...state.file, dirty: false });
+      showToast(`Saved ${state.file.name}`);
+      return;
+    }
+    const suggested = ensureExtension(state.file.name || slugify(doc.root.text));
+    const result = await saveFileAs(suggested, text, { download });
+    if (!result) return; // cancelled
+    setFile({ handle: result.handle, name: result.name, dirty: false });
+    showToast(
+      result.handle
+        ? `Saved ${result.name}`
+        : `Downloaded ${result.name} — this browser cannot save back to a file, so each save is a copy`,
+      result.handle ? 2600 : 5200,
+    );
+  } catch (error) {
+    console.warn('Could not save that file:', error);
+    showToast(error.message || 'That file could not be saved', 5000);
+  }
+}
+
+/** Asks before throwing away edits that were never written to their file. */
+async function confirmDiscardIfNeeded(title) {
+  if (!state.file.name || !state.file.dirty) return true;
+  return confirmAction({
+    title,
+    body: `${state.file.name} has changes you have not saved. They stay in History and can be undone, but the file will not have them.`,
+    confirmLabel: 'Continue without saving',
+  });
+}
+
+function bindFileDrop() {
+  const stop = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  ui.wrap.addEventListener('dragover', (event) => {
+    if (!event.dataTransfer?.types?.includes('Files')) return;
+    stop(event);
+    event.dataTransfer.dropEffect = 'copy';
+    ui.wrap.classList.add('is-drop-zone');
+  });
+  ui.wrap.addEventListener('dragleave', (event) => {
+    if (event.relatedTarget && ui.wrap.contains(event.relatedTarget)) return;
+    ui.wrap.classList.remove('is-drop-zone');
+  });
+  ui.wrap.addEventListener('drop', async (event) => {
+    const file = event.dataTransfer?.files?.[0];
+    if (!file) return;
+    stop(event);
+    ui.wrap.classList.remove('is-drop-zone');
+    try {
+      if (!(await confirmDiscardIfNeeded('Open the dropped map?'))) return;
+      adoptFile(await readDroppedFile(file));
+    } catch (error) {
+      console.warn('Could not open the dropped file:', error);
+      showToast(error.message || 'That file could not be opened', 5000);
+    }
   });
 }
 
@@ -604,6 +749,16 @@ document.addEventListener('keydown', (event) => {
     refresh();
     return;
   }
+  if (mod && event.key.toLowerCase() === 'o') {
+    event.preventDefault();
+    openFromFile();
+    return;
+  }
+  if (mod && event.key.toLowerCase() === 's') {
+    event.preventDefault();
+    saveToFile({ saveAs: event.shiftKey });
+    return;
+  }
   if (typing || editor.isOpen()) return;
 
   // Formatting works on the selected node without opening the editor.
@@ -846,6 +1001,7 @@ function buildSampleSelect() {
       if (!ok) return;
     }
     ui.outline.value = sample.outline;
+    setFile({ name: '', dirty: false }); // a sample is not your file
     generateFromOutline({
       checkpointLabel: `Before loading ${sample.name}`,
       preserveFormatting: false,
@@ -868,9 +1024,12 @@ function bindChrome() {
     checkpoint('Before new map');
     doc.replaceRoot(parseOutline('Central idea\n  - First branch\n  - Second branch'));
     state.selectedId = null;
+    setFile({ name: '', dirty: false });
     refresh();
     fitMap();
   });
+  el('btn-open').addEventListener('click', openFromFile);
+  el('btn-save').addEventListener('click', () => saveToFile());
   el('btn-undo').addEventListener('click', () => {
     doc.undo();
     if (!doc.get(state.selectedId)) state.selectedId = null;
@@ -967,15 +1126,26 @@ function bindChrome() {
     editor.reposition();
   });
 
-  window.addEventListener('beforeunload', () => {
-    saveState({ doc: doc.toJSON(), theme: state.theme, mode: state.mode });
+  window.addEventListener('beforeunload', (event) => {
+    saveState({
+      doc: doc.toJSON(),
+      theme: state.theme,
+      mode: state.mode,
+      file: { name: state.file.name, dirty: state.file.dirty },
+    });
     pushVersion(doc.toJSON());
+    // Only warn when a file is involved: without one, autosave has it covered.
+    if (state.file.name && state.file.dirty) {
+      event.preventDefault();
+      event.returnValue = '';
+    }
   });
 }
 
 // ------------------------------------------------------------------- boot
 
 function boot() {
+  doc.onChange(markDirty);
   buildSwatches();
   buildSampleSelect();
   bindChrome();
@@ -983,6 +1153,8 @@ function boot() {
   state.mode = saved?.mode === 'right' ? 'right' : 'both';
   setSidebar(window.innerWidth >= NARROW, { refit: false });
   ui.outline.value = toOutline(doc.root);
+  setFile(saved?.file ?? { name: '', dirty: false });
+  bindFileDrop();
   refresh();
   fitMap({ animate: false });
   pushVersion(doc.toJSON(), { label: 'Opened', force: true });

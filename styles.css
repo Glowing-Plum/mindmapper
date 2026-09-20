@@ -69,8 +69,11 @@ body {
   height: var(--topbar-h);
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 14px;
   padding: 0 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   position: relative;
@@ -96,6 +99,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0; /* labels must never wrap onto a second line */
 }
 
 .topbar-group.right {
@@ -117,6 +121,7 @@ select,
 .btn {
   font: inherit;
   font-size: 13px;
+  white-space: nowrap;
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -168,6 +173,7 @@ select:hover,
 .seg {
   font: inherit;
   font-size: 13px;
+  white-space: nowrap;
   border: 0;
   background: transparent;
   color: var(--text-soft);
@@ -214,6 +220,43 @@ select:hover,
 
 .menu-list[hidden] { display: none; }
 .menu-list button:hover { background: var(--accent-soft); }
+
+.file-state { min-width: 0; }
+
+.file-name {
+  font-size: 12.5px;
+  color: var(--text-soft);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-name.is-dirty::after {
+  content: ' •';
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.file-name.is-file { color: var(--text); }
+
+/* Dropping a file anywhere on the canvas opens it. */
+.canvas-wrap.is-drop-zone::after {
+  content: 'Drop to open this map';
+  position: absolute;
+  inset: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--accent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 560;
+  pointer-events: none;
+  z-index: 12;
+}
 
 /* ------------------------------------------------------------- workspace */
 .workspace {
@@ -604,7 +647,7 @@ kbd {
 
 /* --------------------------------------------------------------- responsive */
 @media (max-width: 900px) {
-  .topbar { gap: 10px; overflow-x: auto; }
+  .topbar { gap: 10px; }
   .zoom-controls { flex-wrap: wrap; max-width: 120px; justify-content: flex-end; }
   .sidebar {
     position: absolute;
