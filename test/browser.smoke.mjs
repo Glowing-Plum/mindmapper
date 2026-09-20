@@ -532,33 +532,35 @@ try {
     (await page.textContent('#timer-clock')) === '0:00'
     && await page.evaluate(() => document.getElementById('canvas-timer').hidden));
 
-  // Tapping a verse opens the library panel in the corner.
+  // Tapping a verse hands it to JW Library.
+  await page.selectOption('#talk-locale', 'KO');
+  await page.waitForTimeout(200);
   await page.click('.node .scripture');
   await page.waitForTimeout(400);
-  const versePanel = await page.evaluate(() => {
-    const el = document.getElementById('verse-panel');
-    const rect = el.getBoundingClientRect();
-    const wrap = document.getElementById('canvas-wrap').getBoundingClientRect();
-    return {
-      open: !el.hidden,
-      corner: rect.left - wrap.left < 40 && wrap.bottom - rect.bottom < 40,
-      cite: document.getElementById('verse-cite').textContent,
-      src: document.getElementById('verse-frame').getAttribute('src'),
-    };
-  });
-  check('tapping a verse opens it bottom-left, as written, in the library',
-    versePanel.open && versePanel.corner && versePanel.cite === 'Genesis 23:2'
-    && versePanel.src.includes('wol.jw.org'), JSON.stringify(versePanel));
+  const handoff = await page.evaluate(() => window.mindmapper.lastVerseLink?.app ?? null);
+  check('a verse is handed to JW Library, numbered and localised',
+    handoff === 'jwlibrary:///finder?bible=01023002&wtlocale=KO&pub=nwtsty', String(handoff));
+  check('a way through to jw.org is offered, since the handoff cannot be confirmed',
+    await page.evaluate(() => {
+      const link = document.querySelector('#toast .toast-link');
+      return Boolean(link) && link.href.startsWith('https://www.jw.org/finder?bible=01023002');
+    }));
 
-  await page.selectOption('#talk-wol-lang', 'ko');
-  await page.waitForTimeout(400);
-  check('the language choice reloads the open verse',
-    (await page.getAttribute('#verse-frame', 'src')).includes('/ko/'));
-  await page.click('#btn-verse-close');
+  // Switching to the website opens a tab instead. The site itself is stubbed
+  // so this asserts the address we ask for, not the network.
+  await page.context().route('https://www.jw.org/**', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<title>stub</title>' }));
+  await page.selectOption('#talk-link', 'jworg');
   await page.waitForTimeout(200);
-  check('the verse panel closes', await page.evaluate(() =>
-    document.getElementById('verse-panel').hidden));
-  await page.selectOption('#talk-wol-lang', 'en');
+  const [webTab] = await Promise.all([
+    page.context().waitForEvent('page'),
+    page.click('.node .scripture'),
+  ]);
+  check('the jw.org option opens the verse in a tab',
+    webTab.url().startsWith('https://www.jw.org/finder?bible=01023002'), webTab.url());
+  await webTab.close();
+  await page.selectOption('#talk-link', 'jwlibrary');
+  await page.waitForTimeout(200);
 
   // Minutes and notes need no Enter, and land on the node being typed into.
   await clickNode('Grief is natural');

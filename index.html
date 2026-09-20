@@ -132,10 +132,11 @@
             <ul class="ref-list" id="talk-refs"></ul>
             <label class="talk-label" for="talk-link">Tapping a verse</label>
             <select id="talk-link"></select>
-            <input type="url" id="talk-link-custom" placeholder="https://example.org/search?q={ref}" hidden />
-            <label class="talk-label" for="talk-wol-lang" id="talk-wol-lang-label">Library language</label>
-            <select id="talk-wol-lang"></select>
-            <input type="url" id="talk-wol-custom" placeholder="https://wol.jw.org/…/lp-xx?q={ref}" hidden />
+            <input type="text" id="talk-link-custom" placeholder="https://example.org/?q={ref}" hidden />
+            <label class="talk-label" for="talk-locale" id="talk-locale-label">Language</label>
+            <select id="talk-locale"></select>
+            <input type="text" id="talk-locale-custom" placeholder="Language code, e.g. KO" hidden />
+            <p class="talk-sub" id="verse-hint"></p>
           </section>
 
           <button type="button" class="btn primary block" id="btn-print">Print / PDF outline</button>
@@ -188,23 +189,6 @@
           <button type="button" class="btn icon" id="btn-zoom-in" aria-label="Zoom in">+</button>
           <button type="button" class="btn icon" id="btn-fit" title="Fit to screen (Shift+F)" aria-label="Fit to screen">&#9974;</button>
         </div>
-
-        <aside class="verse-panel" id="verse-panel" hidden aria-label="Scripture">
-          <header class="verse-head">
-            <span class="verse-cite" id="verse-cite"></span>
-            <div class="verse-actions">
-              <button type="button" class="btn ghost small" id="btn-verse-open" title="Open in a new tab">Open&nbsp;&#8599;</button>
-              <button type="button" class="btn ghost small" id="btn-verse-close" aria-label="Close">&#10005;</button>
-            </div>
-          </header>
-          <div class="verse-body">
-            <iframe id="verse-frame" title="Scripture" referrerpolicy="no-referrer"></iframe>
-          </div>
-          <p class="verse-fallback">
-            Blank? Some libraries refuse to be shown inside another page — use
-            <strong>Open&nbsp;&#8599;</strong>.
-          </p>
-        </aside>
 
         <button type="button" class="sidebar-reveal" id="btn-show-sidebar" hidden>Outline</button>
         <div class="canvas-timer" id="canvas-timer" hidden><span id="canvas-timer-clock">0:00</span></div>

@@ -674,6 +674,13 @@ select:focus-visible,
 [data-theme='dark'] .toast { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
 .toast[hidden] { display: none; }
 
+.toast-link {
+  color: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 @keyframes toast-in {
   from { opacity: 0; transform: translate(-50%, 8px); }
   to { opacity: 1; transform: translate(-50%, 0); }
@@ -1148,75 +1155,5 @@ dialog menu { gap: 8px; align-items: center; justify-content: space-between; }
 .canvas-timer.is-over { color: var(--danger); border-color: var(--danger); }
 .canvas-timer.is-close { color: var(--warning); }
 
-/* The scripture panel sits in the bottom-left of the canvas. */
-.verse-panel {
-  position: absolute;
-  left: calc(16px + env(safe-area-inset-left, 0px));
-  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-  z-index: 13;
-  width: min(420px, calc(100vw - 32px));
-  height: min(460px, 55vh);
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  resize: both;
-}
 
-.verse-panel[hidden] { display: none; }
-
-.verse-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 8px 8px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-2);
-}
-
-.verse-cite {
-  font-size: 13.5px;
-  font-weight: 650;
-  color: var(--scripture);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.verse-actions { display: flex; gap: 4px; flex-shrink: 0; }
-
-.verse-body {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  background: var(--surface);
-}
-
-#verse-frame {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-  border: 0;
-  background: var(--surface);
-}
-
-/* A standing note under the frame: whether a library allows embedding cannot
-   be detected from here, so the way out is always in sight. */
-.verse-fallback {
-  margin: 0;
-  padding: 7px 12px;
-  border-top: 1px solid var(--border);
-  background: var(--surface-2);
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--text-soft);
-}
-
-@media (max-width: 900px) {
-  .verse-panel { width: calc(100vw - 32px); height: 50vh; }
 }

@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  collectReferences, findReferences, hasReference, referenceUrl, segmentLine,
+  JW_APP_TEMPLATE, JW_WEB_TEMPLATE, bibleNumber, collectReferences, findReferences, hasReference,
+  jwUrl, segmentLine,
 } from '../src/scripture.js';
 import { parseOutline } from '../src/parser.js';
 
@@ -62,18 +63,54 @@ test('a line without references is a single run', () => {
   assert.deepEqual(segmentLine('plain text'), [{ text: 'plain text', reference: null }]);
 });
 
-test('builds links from a template, url-encoded', () => {
+test('numbers a verse the way jw.org and JW Library do', () => {
+  // Two digits of book, three of chapter, three of verse.
+  const number = (text) => bibleNumber(findReferences(text)[0]);
+  assert.equal(number('Genesis 1:1'), '01001001');
+  assert.equal(number('시편 34:18'), '19034018', 'Psalms is book 19');
+  assert.equal(number('Romans 8:28'), '45008028');
+  assert.equal(number('1 John 4:8'), '62004008');
+  assert.equal(number('Revelation 22:21'), '66022021', 'the last book is 66');
+});
+
+test('a range or a list of verses becomes a range', () => {
+  const number = (text) => bibleNumber(findReferences(text)[0]);
+  assert.equal(number('Psalm 34:18-19'), '19034018-19034019');
+  assert.equal(number('창세기 37:34, 35'), '01037034-01037035', 'first to last');
+  assert.equal(number('Acts 2:1,4'), '44002001-44002004');
+});
+
+test('a whole chapter has no verse', () => {
+  assert.equal(bibleNumber(findReferences('Romans 8')[0]), '45008000');
+});
+
+test('builds a JW Library address for a reference', () => {
+  const [reference] = findReferences('시편 34:18');
+  assert.equal(
+    jwUrl(reference, { template: JW_APP_TEMPLATE, locale: 'KO' }),
+    'jwlibrary:///finder?bible=19034018&wtlocale=KO&pub=nwtsty',
+  );
+  assert.equal(
+    jwUrl(reference, { template: JW_WEB_TEMPLATE, locale: 'E' }),
+    'https://www.jw.org/finder?bible=19034018&wtlocale=E&pub=nwtsty',
+  );
+});
+
+test('a custom template can use the reference itself', () => {
   const [reference] = findReferences('1 Cor 13:4-7');
   assert.equal(
-    referenceUrl(reference, 'https://example.org/?q={ref}'),
+    jwUrl(reference, { template: 'https://example.org/?q={ref}' }),
     'https://example.org/?q=1%20Corinthians%2013%3A4-7',
   );
-  assert.equal(
-    referenceUrl(reference, 'https://example.org/{book}/{chapter}/{verse}'),
-    'https://example.org/1%20Corinthians/13/4-7',
-  );
-  assert.equal(referenceUrl(reference, null), null, 'no template means no link');
-  assert.equal(referenceUrl(null, 'https://example.org/{ref}'), null);
+});
+
+test('no template and no reference give no address', () => {
+  const [reference] = findReferences('John 3:16');
+  assert.equal(jwUrl(reference, { template: null }), null);
+  assert.equal(jwUrl(null, { template: JW_APP_TEMPLATE }), null);
+  assert.equal(bibleNumber(null), null);
+  assert.equal(bibleNumber({ book: 'Book of Mormon', chapter: 1, verses: '1' }), null,
+    'a book we do not know has no number');
 });
 
 test('collects every reference in a tree, in reading order', () => {

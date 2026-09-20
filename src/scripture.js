@@ -151,42 +151,82 @@ export function segmentLine(line) {
 }
 
 /**
- * Watchtower Online Library languages.
+ * JW Library deep links.
  *
- * Each WOL language has its own path prefix and library ids. These two were
- * taken from the site's own addresses; if yours is different, open wol.jw.org
- * in your language and paste its address into the custom option.
+ * Both jw.org and the app address a verse by an eight digit number: two digits
+ * of book, three of chapter, three of verse, so Psalm 34:18 is 19034018. That
+ * part is just the fixed order of the books and is reliable.
+ *
+ * The shape of the address around it is not something this project can verify,
+ * so both templates are editable. `{bible}` and `{locale}` are filled in.
  */
-export const WOL_LANGUAGES = [
-  { id: 'en', name: 'English', template: 'https://wol.jw.org/en/wol/l/r1/lp-e?q={ref}' },
-  { id: 'ko', name: '한국어 (Korean)', template: 'https://wol.jw.org/ko/wol/l/r8/lp-ko?q={ref}' },
-  { id: 'custom', name: 'Other — paste an address…', template: '' },
-];
+export const JW_APP_TEMPLATE = 'jwlibrary:///finder?bible={bible}&wtlocale={locale}&pub=nwtsty';
+export const JW_WEB_TEMPLATE = 'https://www.jw.org/finder?bible={bible}&wtlocale={locale}&pub=nwtsty';
 
-/** Where to send a reference. `null` means references are not links. */
-export const LINK_TEMPLATES = [
-  { id: 'wol', name: 'A panel on this page (wol.jw.org)', template: null },
-  { id: 'none', name: 'Do nothing', template: null },
-  { id: 'biblegateway', name: 'BibleGateway', template: 'https://www.biblegateway.com/passage/?search={ref}' },
-  { id: 'youversion', name: 'YouVersion', template: 'https://www.bible.com/search/bible?query={ref}' },
-  { id: 'blueletter', name: 'Blue Letter Bible', template: 'https://www.blueletterbible.org/search/search.cfm?Criteria={ref}' },
-  { id: 'wol', name: 'Watchtower Library (wol.jw.org)', template: 'https://wol.jw.org/en/wol/l/r1/lp-e?q={ref}' },
-  { id: 'custom', name: 'Custom link…', template: '' },
+/** Watchtower language codes, as used by `wtlocale`. */
+export const JW_LOCALES = [
+  { id: 'E', name: 'English' },
+  { id: 'KO', name: '한국어 — Korean' },
+  { id: 'S', name: 'Español' },
+  { id: 'J', name: '日本語 — Japanese' },
+  { id: 'CHS', name: '简体中文 — Chinese (Simplified)' },
+  { id: 'F', name: 'Français' },
+  { id: 'X', name: 'Deutsch' },
+  { id: 'T', name: 'Português' },
+  { id: 'TG', name: 'Tagalog' },
+  { id: 'VT', name: 'Tiếng Việt — Vietnamese' },
+  { id: 'custom', name: 'Other — type the code…' },
 ];
 
 /**
- * Builds a URL for a reference. `{ref}`, `{book}`, `{chapter}` and `{verse}`
- * are replaced; everything is URL-encoded.
+ * What tapping a verse does. `app` means a handoff to an installed app rather
+ * than a page, which the browser cannot confirm either way.
  */
-export function referenceUrl(reference, template) {
-  if (!template || !reference) return null;
-  const values = {
-    ref: reference.canonical,
-    book: reference.book,
-    chapter: String(reference.chapter),
-    verse: reference.verses ?? '',
-  };
-  return template.replace(/\{(ref|book|chapter|verse)\}/g, (_, key) => encodeURIComponent(values[key]));
+export const VERSE_ACTIONS = [
+  { id: 'jwlibrary', name: 'Open in JW Library', template: JW_APP_TEMPLATE, app: true },
+  { id: 'jworg', name: 'Open jw.org in a new tab', template: JW_WEB_TEMPLATE, app: false },
+  { id: 'custom', name: 'Custom link…', template: '', app: false },
+  { id: 'none', name: 'Do nothing', template: null, app: false },
+];
+
+const BOOK_NUMBERS = new Map(BOOKS.map(([canonical], index) => [canonical, index + 1]));
+
+/** First and last verse of "18", "18-19" or "34, 35". Zero means a chapter. */
+function verseRange(verses) {
+  if (!verses) return [0, 0];
+  const numbers = verses.split(/[-–—,]/).map(Number).filter(Number.isFinite);
+  if (numbers.length === 0) return [0, 0];
+  return [numbers[0], numbers[numbers.length - 1]];
+}
+
+const pad = (value, width) => String(value).padStart(width, '0');
+
+/**
+ * The reference as the number jw.org and JW Library use: BBCCCVVV, or a
+ * dash-joined pair for a range.
+ *
+ * @returns {string|null} null when the book is not one we know
+ */
+export function bibleNumber(reference) {
+  const book = BOOK_NUMBERS.get(reference?.book);
+  if (!book) return null;
+  const [first, last] = verseRange(reference.verses);
+  const start = `${pad(book, 2)}${pad(reference.chapter, 3)}${pad(first, 3)}`;
+  if (last === first) return start;
+  return `${start}-${pad(book, 2)}${pad(reference.chapter, 3)}${pad(last, 3)}`;
+}
+
+/**
+ * Builds a JW Library (or jw.org) address for a reference.
+ * @returns {string|null}
+ */
+export function jwUrl(reference, { template, locale = 'E' } = {}) {
+  const number = bibleNumber(reference);
+  if (!number || !template) return null;
+  return template
+    .replace(/\{bible\}/g, number)
+    .replace(/\{locale\}/g, encodeURIComponent(locale || 'E'))
+    .replace(/\{ref\}/g, encodeURIComponent(reference.canonical));
 }
 
 /** Every reference in a tree, in reading order, with the node that holds it. */
