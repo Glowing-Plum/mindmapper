@@ -53,17 +53,21 @@ slot is left, turning amber near the end and red once it is spent. While it
 runs it also shows at the top of the canvas, so you can watch the map instead
 of the panel.
 
-**Tapping a verse** opens it in a panel in the bottom-left corner, using the
-Watchtower Online Library in the language you choose (English and Korean are
-built in; any other language can be pasted in from wol.jw.org). The panel can
-be resized, and **Open ↗** takes the verse to a full tab — some libraries
-refuse to be displayed inside another page, and there is no way to detect that
-in advance, so the way out is always in sight. You can also switch to opening
-verses in a new tab at BibleGateway, YouVersion or Blue Letter Bible instead.
+**Tapping a verse hands it to JW Library.** References are turned into the
+eight-digit number jw.org and the app both use — two digits of book, three of
+chapter, three of verse, so 시편 34:18 becomes `19034018`, and a range becomes a
+pair — and handed over as `jwlibrary:///finder?bible=…`, in the language you
+pick.
 
-**Print / PDF** produces the thing you carry to the podium: the outline
-indented by level, scripture in bold, times down the right margin and your
-notes underneath each part. Print to PDF from the browser's dialog to keep it.
+A browser is never told whether an app took a link like that, so the handoff
+always comes with a way through to **jw.org** in the same tap. Where JW Library
+is not installed — a Mac, for instance — switch *Tapping a verse* to **Open
+jw.org in a new tab**. A **Custom link** option takes any address with `{ref}`,
+or `{bible}` and `{locale}`, if you would rather use something else entirely.
+
+The address shapes and the language codes could not be checked against jw.org
+from where this was built, so both are easy to correct: pick **Custom link…**
+and paste what works for you.
 
 ## Using it on an iPad (or any other device)
 
@@ -153,8 +157,9 @@ wraps at, then grows taller — and it grows away from the side it is anchored
 on, so the words under your cursor stay put. The size while you type is the
 size it settles at, so nothing jumps when you finish.
 
-**Two handles** appear on a node while it is selected or being typed in: the
-one out to the side adds a child, the one underneath adds a sibling. They take
+**Two handles** are how you branch off a card: the one out to the side adds a
+child, the one underneath adds a sibling. They show while a node is selected or
+being typed in, and they follow the card as it grows under your cursor. They take
 the colour of the branch they would extend. Further out again sits the button
 that closes the branch — and once closed, it becomes the bubble counting what
 is tucked away.
@@ -246,7 +251,7 @@ invariant that no two nodes ever overlap.
 
 ## Tests
 
-`npm test` runs 94 unit tests across the parser, the document model, the layout
+`npm test` runs 99 unit tests across the parser, the document model, the layout
 engine, scripture detection, talk timings, file handling and local storage — including the invariants that nodes
 never overlap, that siblings align only with each other, that regenerating
 preserves formatting, and that a `.json` file round-trips everything an outline
@@ -256,7 +261,7 @@ cannot carry.
 dragging, formatting, line labels, collapsing, undo, version history, opening
 and saving files, drag-and-drop, talk mode, timings, the scripture index, the
 printable outline, space-to-pan, the node handles, the rehearsal timer, the
-verse panel, autosave and export (69 checks). It skips itself cleanly
+JW Library handoff, autosave and export (74 checks). It skips itself cleanly
 when Playwright is not installed.
 
 ## Browser support

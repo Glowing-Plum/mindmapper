@@ -222,6 +222,25 @@ try {
   });
   const emptyCard = await editorSize();
   check('a new card is wide enough to type in', emptyCard.w >= 120, JSON.stringify(emptyCard));
+
+  // The dot that adds a child has to stay reachable while typing: it is
+  // positioned from the box the layout measured, which the editor outgrows.
+  const dotWhileEditing = await page.evaluate(() => {
+    const editing = document.querySelector('.node.is-editing');
+    const dot = editing?.querySelector('.node-handle-child .node-handle-dot');
+    if (!dot) return null;
+    const d = dot.getBoundingClientRect();
+    const e = document.querySelector('.inline-editor').getBoundingClientRect();
+    const hit = document.elementFromPoint(d.left + d.width / 2, d.top + d.height / 2);
+    return {
+      shown: getComputedStyle(dot.parentElement).opacity === '1',
+      clearOfEditor: d.left >= e.right - 1 || d.right <= e.left + 1,
+      onTop: Boolean(hit?.closest?.('.node-handle-child')),
+    };
+  });
+  check('the child dot stays visible and reachable while typing',
+    dotWhileEditing?.shown && dotWhileEditing?.clearOfEditor && dotWhileEditing?.onTop,
+    JSON.stringify(dotWhileEditing));
   await page.keyboard.type('Short');
   await page.waitForTimeout(150);
   const shortCard = await editorSize();
@@ -229,8 +248,16 @@ try {
   await page.waitForTimeout(200);
   const longCard = await editorSize();
   check('it widens with the text, then wraps taller rather than running away',
-    longCard.w > shortCard.w && longCard.w <= 320 && longCard.h > shortCard.h,
+    longCard.w > shortCard.w && longCard.w <= 330 && longCard.h > shortCard.h,
     `${shortCard.w}x${shortCard.h} -> ${longCard.w}x${longCard.h}`);
+  check('the text is never clipped by the box it is typed into', await page.evaluate(() => {
+    const t = document.querySelector('.inline-editor');
+    return t.scrollHeight <= t.clientHeight + 1;
+  }));
+
+  // Adding a child or sibling lives on the dots, not in the toolbar.
+  check('the toolbar no longer carries + Child / + Sibling', await page.evaluate(() =>
+    !document.querySelector('[data-act="child"]') && !document.querySelector('[data-act="sibling"]')));
   await page.keyboard.press('Enter');
   await page.waitForTimeout(400);
   const settled = await page.evaluate(() => {
@@ -239,7 +266,7 @@ try {
     return { w: Math.round(r.width), h: Math.round(r.height) };
   });
   check('the card does not jump size when the edit is committed',
-    Math.abs(settled.w - longCard.w) <= 4 && Math.abs(settled.h - longCard.h) <= 4,
+    Math.abs(settled.w - longCard.w) <= 6 && Math.abs(settled.h - longCard.h) <= 6,
     `editing ${longCard.w}x${longCard.h} -> settled ${settled.w}x${settled.h}`);
   await page.keyboard.press('Control+z');
   await page.waitForTimeout(350);
@@ -532,33 +559,35 @@ try {
     (await page.textContent('#timer-clock')) === '0:00'
     && await page.evaluate(() => document.getElementById('canvas-timer').hidden));
 
-  // Tapping a verse opens the library panel in the corner.
+  // Tapping a verse hands it to JW Library.
+  await page.selectOption('#talk-locale', 'KO');
+  await page.waitForTimeout(200);
   await page.click('.node .scripture');
   await page.waitForTimeout(400);
-  const versePanel = await page.evaluate(() => {
-    const el = document.getElementById('verse-panel');
-    const rect = el.getBoundingClientRect();
-    const wrap = document.getElementById('canvas-wrap').getBoundingClientRect();
-    return {
-      open: !el.hidden,
-      corner: rect.left - wrap.left < 40 && wrap.bottom - rect.bottom < 40,
-      cite: document.getElementById('verse-cite').textContent,
-      src: document.getElementById('verse-frame').getAttribute('src'),
-    };
-  });
-  check('tapping a verse opens it bottom-left, as written, in the library',
-    versePanel.open && versePanel.corner && versePanel.cite === 'Genesis 23:2'
-    && versePanel.src.includes('wol.jw.org'), JSON.stringify(versePanel));
+  const handoff = await page.evaluate(() => window.mindmapper.lastVerseLink?.app ?? null);
+  check('a verse is handed to JW Library, numbered and localised',
+    handoff === 'jwlibrary:///finder?bible=01023002&wtlocale=KO&pub=nwtsty', String(handoff));
+  check('a way through to jw.org is offered, since the handoff cannot be confirmed',
+    await page.evaluate(() => {
+      const link = document.querySelector('#toast .toast-link');
+      return Boolean(link) && link.href.startsWith('https://www.jw.org/finder?bible=01023002');
+    }));
 
-  await page.selectOption('#talk-wol-lang', 'ko');
-  await page.waitForTimeout(400);
-  check('the language choice reloads the open verse',
-    (await page.getAttribute('#verse-frame', 'src')).includes('/ko/'));
-  await page.click('#btn-verse-close');
+  // Switching to the website opens a tab instead. The site itself is stubbed
+  // so this asserts the address we ask for, not the network.
+  await page.context().route('https://www.jw.org/**', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<title>stub</title>' }));
+  await page.selectOption('#talk-link', 'jworg');
   await page.waitForTimeout(200);
-  check('the verse panel closes', await page.evaluate(() =>
-    document.getElementById('verse-panel').hidden));
-  await page.selectOption('#talk-wol-lang', 'en');
+  const [webTab] = await Promise.all([
+    page.context().waitForEvent('page'),
+    page.click('.node .scripture'),
+  ]);
+  check('the jw.org option opens the verse in a tab',
+    webTab.url().startsWith('https://www.jw.org/finder?bible=01023002'), webTab.url());
+  await webTab.close();
+  await page.selectOption('#talk-link', 'jwlibrary');
+  await page.waitForTimeout(200);
 
   // Minutes and notes need no Enter, and land on the node being typed into.
   await clickNode('Grief is natural');

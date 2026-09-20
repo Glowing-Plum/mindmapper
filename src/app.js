@@ -13,7 +13,9 @@ import {
   clearState, clearVersions, getVersion, listVersions, loadState, pushVersion, relativeTime, saveState,
 } from './storage.js';
 import { copyText, download, markdownFor, slugify, toPngBlob, toSvgString } from './exporters.js';
-import { LINK_TEMPLATES, WOL_LANGUAGES, collectReferences, findReferences, referenceUrl } from './scripture.js';
+import {
+  JW_LOCALES, JW_WEB_TEMPLATE as JW_WEB, VERSE_ACTIONS, collectReferences, findReferences, jwUrl,
+} from './scripture.js';
 import { formatClock, formatMinutes, rollup, rollupAll, summarise } from './timing.js';
 import {
   ensureExtension, openFile, parseFileContents, readDroppedFile, saveFileAs, serialiseDoc,
@@ -56,11 +58,9 @@ const ui = {
   timerButton: el('btn-timer'),
   canvasTimer: el('canvas-timer'),
   canvasTimerClock: el('canvas-timer-clock'),
-  versePanel: el('verse-panel'),
-  verseCite: el('verse-cite'),
-  verseFrame: el('verse-frame'),
-  wolLang: el('talk-wol-lang'),
-  wolCustom: el('talk-wol-custom'),
+  locale: el('talk-locale'),
+  localeCustom: el('talk-locale-custom'),
+  verseHint: el('verse-hint'),
 };
 
 const state = {
@@ -79,10 +79,10 @@ const state = {
   // Talk preparation: timings, scripture references and speaker notes.
   talkMode: false,
   talkTarget: 0,
-  linkPreset: 'wol',
-  linkCustom: '',
-  wolLang: 'en',
-  wolCustom: '',
+  verseAction: 'jwlibrary',
+  verseCustom: '',
+  locale: 'E',
+  localeCustom: '',
   // Rehearsal timer: elapsed seconds, and when the current run started.
   timer: { elapsed: 0, startedAt: 0 },
 };
@@ -107,6 +107,10 @@ editor = createInlineEditor(ui.wrap, {
   onCommit: commitEdit,
   onCancel: cancelEdit,
   onChord: handleEditorChord,
+  // Keep the dots alongside the card as it grows under the cursor.
+  onResize: (target, rect) => {
+    if (target.kind === 'node') renderer.setEditingBox(target.id, rect);
+  },
 });
 
 // ------------------------------------------------------------------ render
@@ -154,52 +158,56 @@ function showPanel(which) {
   if (ui.sidebar.hidden) setSidebar(true);
 }
 
-function linkTemplate() {
-  if (state.linkPreset === 'custom') return state.linkCustom.trim() || null;
-  return LINK_TEMPLATES.find((entry) => entry.id === state.linkPreset)?.template ?? null;
+// The last handoff attempted, for the console when a link does not behave.
+let lastVerseLink = null;
+
+/** The address template for whatever tapping a verse should do. */
+function verseTemplate() {
+  if (state.verseAction === 'custom') return state.verseCustom.trim() || null;
+  return VERSE_ACTIONS.find((entry) => entry.id === state.verseAction)?.template ?? null;
 }
 
-/** The library address for the chosen language. */
-function wolTemplate() {
-  if (state.wolLang === 'custom') return state.wolCustom.trim() || null;
-  return WOL_LANGUAGES.find((entry) => entry.id === state.wolLang)?.template ?? null;
+function verseLocale() {
+  return state.locale === 'custom' ? state.localeCustom.trim() || 'E' : state.locale;
 }
 
-// ----------------------------------------------------------- verse panel
-
-let versePanelUrl = null;
+function verseActionIsApp() {
+  return VERSE_ACTIONS.find((entry) => entry.id === state.verseAction)?.app === true;
+}
 
 /**
- * Opens a reference in the panel in the corner, or in a tab.
- * `label` is how it was written, which is what the panel shows; the link is
- * always built from the canonical English form.
+ * Hands a reference to JW Library, or opens it on the web.
+ *
+ * A browser cannot be told whether an app took a custom-scheme link, so the
+ * app case always leaves a way through to jw.org rather than appearing to do
+ * nothing on a machine without the app.
  */
 function openReference(reference, { node = null, label = null } = {}) {
   if (!reference) return;
-  const shown = label ?? reference.text;
-  if (state.linkPreset === 'wol') {
-    const url = referenceUrl(reference, wolTemplate());
-    if (!url) {
-      showToast('Pick a library language in the Talk panel');
-      showPanel('talk');
-      return;
-    }
-    versePanelUrl = url;
-    ui.verseCite.textContent = shown;
-    ui.verseCite.title = reference.canonical;
-    ui.verseFrame.src = url;
-    ui.versePanel.hidden = false;
+  const template = verseTemplate();
+  if (!template) {
+    if (node) select(node.id, { reveal: true });
     return;
   }
-  const url = referenceUrl(reference, linkTemplate());
-  if (url) window.open(url, '_blank', 'noopener');
-  else if (node) select(node.id, { reveal: true });
-}
+  const locale = verseLocale();
+  const url = jwUrl(reference, { template, locale });
+  if (!url) {
+    showToast(`${label ?? reference.text} is not a book this can look up`);
+    return;
+  }
 
-function closeVersePanel() {
-  ui.versePanel.hidden = true;
-  ui.verseFrame.removeAttribute('src');
-  versePanelUrl = null;
+  if (!verseActionIsApp()) {
+    window.open(url, '_blank', 'noopener');
+    return;
+  }
+
+  // The handoff itself. If nothing is registered for the scheme the browser
+  // stays put, so the fallback is offered straight away rather than guessed at.
+  const web = jwUrl(reference, { template: JW_WEB, locale });
+  lastVerseLink = { reference: reference.canonical, app: url, web };
+  window.location.href = url;
+  showToast(`Opening ${label ?? reference.text} in JW Library.`, 7000,
+    web ? { text: 'Not installed? Open on jw.org', href: web } : null);
 }
 
 // --------------------------------------------------------- rehearsal timer
@@ -400,27 +408,30 @@ function printOutline() {
 }
 
 function buildLinkOptions() {
-  for (const entry of LINK_TEMPLATES) {
-    const option = document.createElement('option');
-    option.value = entry.id;
-    option.textContent = entry.name;
-    ui.talkLink.append(option);
-  }
-  for (const entry of WOL_LANGUAGES) {
-    const option = document.createElement('option');
-    option.value = entry.id;
-    option.textContent = entry.name;
-    ui.wolLang.append(option);
-  }
+  const fill = (select, entries) => {
+    for (const entry of entries) {
+      const option = document.createElement('option');
+      option.value = entry.id;
+      option.textContent = entry.name;
+      select.append(option);
+    }
+  };
+  fill(ui.talkLink, VERSE_ACTIONS);
+  fill(ui.locale, JW_LOCALES);
 }
 
 /** Only the settings that apply to the chosen way of opening a verse. */
 function syncScriptureSettings() {
-  const isWol = state.linkPreset === 'wol';
-  ui.talkLinkCustom.hidden = state.linkPreset !== 'custom';
-  ui.wolLang.hidden = !isWol;
-  el('talk-wol-lang-label').hidden = !isWol;
-  ui.wolCustom.hidden = !isWol || state.wolLang !== 'custom';
+  const usesLocale = state.verseAction === 'jwlibrary' || state.verseAction === 'jworg';
+  ui.talkLinkCustom.hidden = state.verseAction !== 'custom';
+  ui.locale.hidden = !usesLocale;
+  el('talk-locale-label').hidden = !usesLocale;
+  ui.localeCustom.hidden = !usesLocale || state.locale !== 'custom';
+  ui.verseHint.textContent = state.verseAction === 'jwlibrary'
+    ? 'Needs JW Library installed — iPad, iPhone, Android or Windows. Elsewhere, use the jw.org option.'
+    : state.verseAction === 'custom'
+      ? 'Use {ref} for the reference, or {bible} and {locale} for the jw.org numbering.'
+      : '';
 }
 
 function positionToolbar() {
@@ -1344,8 +1355,17 @@ function setSidebar(visible, { refit = true } = {}) {
   if (refit && layout) requestAnimationFrame(() => fitMap());
 }
 
-function showToast(message, duration = 2600) {
+function showToast(message, duration = 2600, link = null) {
   ui.toast.textContent = message;
+  if (link) {
+    const anchor = document.createElement('a');
+    anchor.className = 'toast-link';
+    anchor.href = link.href;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener';
+    anchor.textContent = link.text;
+    ui.toast.append(' ', anchor);
+  }
   ui.toast.hidden = false;
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => {
@@ -1547,37 +1567,28 @@ function bindChrome() {
     field.addEventListener('blur', () => flushLiveCommit());
   }
   ui.talkLink.addEventListener('change', () => {
-    state.linkPreset = ui.talkLink.value;
+    state.verseAction = ui.talkLink.value;
     syncScriptureSettings();
     renderReferenceList();
     scheduleSave();
   });
-  ui.wolLang.addEventListener('change', () => {
-    state.wolLang = ui.wolLang.value;
+  ui.locale.addEventListener('change', () => {
+    state.locale = ui.locale.value;
     syncScriptureSettings();
-    // Follow the language change with whatever is already open.
-    if (!ui.versePanel.hidden) {
-      const [reference] = findReferences(ui.verseCite.title || ui.verseCite.textContent);
-      if (reference) openReference(reference, { label: ui.verseCite.textContent });
-    }
     scheduleSave();
   });
-  ui.wolCustom.addEventListener('input', () => {
-    state.wolCustom = ui.wolCustom.value;
+  ui.localeCustom.addEventListener('input', () => {
+    state.localeCustom = ui.localeCustom.value.trim().toUpperCase();
+    scheduleSave();
+  });
+  ui.talkLinkCustom.addEventListener('input', () => {
+    state.verseCustom = ui.talkLinkCustom.value;
     scheduleSave();
   });
 
   el('btn-timer').addEventListener('click', toggleTimer);
   el('btn-timer-reset').addEventListener('click', resetTimer);
-  el('btn-verse-close').addEventListener('click', closeVersePanel);
-  el('btn-verse-open').addEventListener('click', () => {
-    if (versePanelUrl) window.open(versePanelUrl, '_blank', 'noopener');
-  });
-  ui.talkLinkCustom.addEventListener('input', () => {
-    state.linkCustom = ui.talkLinkCustom.value;
-    renderReferenceList();
-    scheduleSave();
-  });
+
 
   el('btn-generate').addEventListener('click', generateFromOutline);
   ui.outline.addEventListener('input', () => {
@@ -1653,9 +1664,8 @@ function bindChrome() {
   ui.toolbar.addEventListener('click', (event) => {
     const act = event.target.closest('[data-act]')?.dataset.act;
     if (!act || !state.selectedId) return;
-    if (act === 'child') addChild();
-    else if (act === 'sibling') addSibling();
-    else if (act === 'delete') deleteSelected();
+    // Adding a child or a sibling lives on the dots beside the card itself.
+    if (act === 'delete') deleteSelected();
     else if (act === 'label') startLabelEdit();
     else if (act === 'bold' || act === 'italic') {
       doc.toggleFormat(state.selectedId, act);
@@ -1677,10 +1687,10 @@ function bindChrome() {
       talk: {
         mode: state.talkMode,
         target: state.talkTarget,
-        linkPreset: state.linkPreset,
-        linkCustom: state.linkCustom,
-        wolLang: state.wolLang,
-        wolCustom: state.wolCustom,
+        verseAction: state.verseAction,
+        verseCustom: state.verseCustom,
+        locale: state.locale,
+        localeCustom: state.localeCustom,
       },
     });
     pushVersion(doc.toJSON());
@@ -1709,15 +1719,15 @@ function boot() {
   const talk = saved?.talk ?? {};
   state.talkMode = Boolean(talk.mode);
   state.talkTarget = Number(talk.target) || 0;
-  state.linkPreset = LINK_TEMPLATES.some((entry) => entry.id === talk.linkPreset) ? talk.linkPreset : 'wol';
-  state.linkCustom = String(talk.linkCustom ?? '');
-  state.wolLang = WOL_LANGUAGES.some((entry) => entry.id === talk.wolLang) ? talk.wolLang : 'en';
-  state.wolCustom = String(talk.wolCustom ?? '');
+  state.verseAction = VERSE_ACTIONS.some((entry) => entry.id === talk.verseAction) ? talk.verseAction : 'jwlibrary';
+  state.verseCustom = String(talk.verseCustom ?? '');
+  state.locale = JW_LOCALES.some((entry) => entry.id === talk.locale) ? talk.locale : 'E';
+  state.localeCustom = String(talk.localeCustom ?? '');
   ui.talkTarget.value = state.talkTarget || '';
-  ui.talkLink.value = state.linkPreset;
-  ui.talkLinkCustom.value = state.linkCustom;
-  ui.wolLang.value = state.wolLang;
-  ui.wolCustom.value = state.wolCustom;
+  ui.talkLink.value = state.verseAction;
+  ui.talkLinkCustom.value = state.verseCustom;
+  ui.locale.value = state.locale;
+  ui.localeCustom.value = state.localeCustom;
   syncScriptureSettings();
   updateTimer();
   if (state.talkMode) showPanel('talk');
@@ -1741,4 +1751,11 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 }
 
 // Exposed for debugging from the console.
-window.mindmapper = { doc, get layout() { return layout; }, viewport, refresh, clearState };
+window.mindmapper = {
+  doc,
+  get layout() { return layout; },
+  get lastVerseLink() { return lastVerseLink; },
+  viewport,
+  refresh,
+  clearState,
+};

@@ -8,6 +8,10 @@ import { FONT_STACK, createMeasurer } from './measure.js';
 // that it will be once you stop.
 const measure = createMeasurer();
 
+// The editor's focus ring, from the stylesheet. Boxes are border-box, so it
+// would otherwise eat into the space the text needs and clip the last line.
+const BORDER = 2;
+
 /**
  * How big the box needs to be for `value`: wider as you type, up to the same
  * maximum the layout wraps at, then taller as the text wraps.
@@ -20,7 +24,10 @@ function sizeFor(target, value) {
     italic: target.italic,
     maxWidth: target.maxWidth,
   });
-  const width = Math.max(target.minWidth, Math.min(metrics.width, target.maxWidth));
+  // A couple of pixels of slack: sized to the measurement exactly, the
+  // browser's own wrapping can disagree by a sub-pixel and break the line,
+  // leaving text clipped in a box built for one line.
+  const width = Math.max(target.minWidth, Math.min(metrics.width + 3, target.maxWidth));
   return {
     w: Math.round(width + target.padX * 2),
     h: Math.round(Math.max(target.minHeight, metrics.lines.length * target.lineHeight + target.padYStyle * 2)),
@@ -33,7 +40,7 @@ function sizeFor(target, value) {
  * { id, kind: 'node' | 'label', x, y, w, h, fontSize, fontWeight, italic,
  *   lineHeight, padX, padY, radius, align, text }
  */
-export function createInlineEditor(host, { onCommit, onCancel, onChord } = {}) {
+export function createInlineEditor(host, { onCommit, onCancel, onChord, onResize } = {}) {
   const input = document.createElement('textarea');
   input.className = 'inline-editor';
   input.setAttribute('spellcheck', 'false');
@@ -58,10 +65,11 @@ export function createInlineEditor(host, { onCommit, onCancel, onChord } = {}) {
     // Centre the text in the box the same way the map does.
     const padY = target.grows ? (h - lines * target.lineHeight) / 2 : target.padY;
     Object.assign(input.style, {
-      left: `${topLeft.x - hostRect.left}px`,
-      top: `${topLeft.y - hostRect.top}px`,
-      width: `${w * k}px`,
-      height: `${h * k}px`,
+      // Offset by the ring so the text still lines up with the map's own.
+      left: `${topLeft.x - hostRect.left - BORDER}px`,
+      top: `${topLeft.y - hostRect.top - BORDER}px`,
+      width: `${w * k + BORDER * 2}px`,
+      height: `${h * k + BORDER * 2}px`,
       fontSize: `${target.fontSize * k}px`,
       lineHeight: `${target.lineHeight * k}px`,
       fontWeight: String(target.fontWeight),
@@ -71,6 +79,9 @@ export function createInlineEditor(host, { onCommit, onCancel, onChord } = {}) {
       borderRadius: `${(target.radius ?? 6) * k}px`,
       textAlign: target.align ?? 'left',
     });
+
+    // So whatever is drawn around the node can keep up with it.
+    onResize?.(target, { x, y, w, h });
   }
 
   function open(target, viewport, { selectAll = true } = {}) {
@@ -91,6 +102,7 @@ export function createInlineEditor(host, { onCommit, onCancel, onChord } = {}) {
     current = null;
     input.style.display = 'none';
     input.blur();
+    onResize?.(target, null);
     if (commit) onCommit?.(target, value);
     else onCancel?.(target);
     return target;
