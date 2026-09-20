@@ -210,6 +210,40 @@ try {
   await page.waitForTimeout(350);
   check('the lower handle adds a sibling', /- Sub item\n\s+- Next to it/.test(await outline()));
 
+  // A card being typed into grows with the text instead of staying at the
+  // size it had when editing started.
+  await clickNode('Launch video');
+  await page.waitForTimeout(200);
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(300);
+  const editorSize = () => page.evaluate(() => {
+    const r = document.querySelector('.inline-editor').getBoundingClientRect();
+    return { w: Math.round(r.width), h: Math.round(r.height), left: Math.round(r.left) };
+  });
+  const emptyCard = await editorSize();
+  check('a new card is wide enough to type in', emptyCard.w >= 120, JSON.stringify(emptyCard));
+  await page.keyboard.type('Short');
+  await page.waitForTimeout(150);
+  const shortCard = await editorSize();
+  await page.keyboard.type(' and then a good deal longer than that was');
+  await page.waitForTimeout(200);
+  const longCard = await editorSize();
+  check('it widens with the text, then wraps taller rather than running away',
+    longCard.w > shortCard.w && longCard.w <= 320 && longCard.h > shortCard.h,
+    `${shortCard.w}x${shortCard.h} -> ${longCard.w}x${longCard.h}`);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(400);
+  const settled = await page.evaluate(() => {
+    const node = [...document.querySelectorAll('.node')].find((n) => n.textContent.includes('good deal longer'));
+    const r = node.querySelector('.node-hit').getBoundingClientRect();
+    return { w: Math.round(r.width), h: Math.round(r.height) };
+  });
+  check('the card does not jump size when the edit is committed',
+    Math.abs(settled.w - longCard.w) <= 4 && Math.abs(settled.h - longCard.h) <= 4,
+    `editing ${longCard.w}x${longCard.h} -> settled ${settled.w}x${settled.h}`);
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(350);
+
   // The collapse button sits outboard of the child dot, and still works there.
   await clickNode('Positioning');
   await page.waitForTimeout(250);

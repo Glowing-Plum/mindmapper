@@ -848,7 +848,10 @@ function nearest(boxes, y) {
 
 // --------------------------------------------------------------- editing
 
-/** The world-space box for editing a node's text. */
+/**
+ * The world-space box for editing a node's text. It grows as you type, so a
+ * new card is roomy from the start instead of a sliver that never widens.
+ */
 function nodeTarget(box) {
   const textHeight = box.lines.length * box.lineHeight;
   return {
@@ -858,15 +861,22 @@ function nodeTarget(box) {
     y: box.y,
     w: box.w,
     h: box.h,
+    side: box.side,
     fontSize: box.style.fontSize,
     fontWeight: box.style.fontWeight,
     italic: Boolean(box.style.italic),
     lineHeight: box.lineHeight,
     padX: box.style.padX,
     padY: (box.h - textHeight) / 2,
+    padYStyle: box.style.padY,
     radius: box.style.radius,
     align: box.isRoot ? 'center' : 'left',
     text: box.node.text,
+    // Growth limits: never narrower than this, never wider than the map wraps.
+    grows: true,
+    minWidth: Math.max(box.textWidth, box.isRoot ? 150 : 120),
+    maxWidth: box.style.maxWidth,
+    minHeight: box.style.minHeight,
   };
 }
 
