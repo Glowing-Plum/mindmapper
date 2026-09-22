@@ -1,130 +1,44 @@
 # Mindmapper
 
-A mindmap generator in the style of Whimsical: write an outline, get a clean,
-colour-branched mind map you can keep editing on the canvas. Nodes are bare
-text on the canvas — colour lives in the connectors, so the words stay the most
-legible thing on screen. No build step, no dependencies — it is plain ES
-modules, SVG and CSS.
+Write an outline, get a clean mind map you can keep editing on the canvas.
+Colour lives in the connectors rather than in boxes, so the words stay the most
+legible thing on screen.
+
+![A mind map of a product launch, branching either side of a centred root](docs/screenshot.png)
+
+No build step, no dependencies, no account, no server doing the thinking — it
+is plain ES modules, SVG and CSS, and your maps are files on your own disk. It
+works offline once loaded, and it is equally at home with a keyboard or a
+touchscreen.
+
+There is also a **Talk mode** for preparing a talk you will stand up and give:
+timings, speaker notes, a rehearsal timer, and scripture references recognised
+in English or Korean. It is optional — ignore it and this is an ordinary mind
+mapper.
+
+## Getting started
 
 ```bash
+git clone https://github.com/Glowing-Plum/mindmapper.git
+cd mindmapper
 npm start          # serves the app at http://localhost:4173
-npm test           # unit tests for the parser, model, layout engine and files
-npm run test:browser   # optional end-to-end pass (needs playwright)
 ```
+
+Nothing is installed — there are no dependencies. ES modules need a real
+origin, so open the served URL rather than the file itself.
 
 On macOS you can double-click **`start.command`** instead: it starts the server
 and opens your browser. The first time, macOS may block it — right-click the
-file, choose **Open**, then **Open** again. Leave the Terminal window open while
-you work, and close it (or press <kbd>Ctrl</kbd> + <kbd>C</kbd>) to stop.
+file, choose **Open**, then **Open** again. Leave the Terminal window open
+while you work, and close it (or press <kbd>Ctrl</kbd> + <kbd>C</kbd>) to stop.
 
-There is nothing to install: no dependencies, no build step. ES modules need a
-real origin, so open the served URL rather than the file itself.
+To use it on a phone or tablet, or on a machine you would rather not run a
+server on, host it — see [Putting it on the web](#putting-it-on-the-web).
 
-## Talk mode
-
-Built for preparing a talk you will actually stand up and give. Turn it on with
-**Talk mode** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>T</kbd>).
-
-**Scripture references are recognised** wherever they appear in a node, in
-English or Korean, full names or abbreviations:
-
-| Written | Read as |
-| --- | --- |
-| `John 3:16`, `1 Cor 13:4-7`, `Gen. 1:1` | the usual English forms |
-| `시편 34:18`, `요한복음3:16` | Korean, with or without a space |
-| `요한복음 17장 3절`, `시편 83편 18절` | the Korean chapter and verse markers |
-| `시편 23편` | a whole chapter |
-| `마태 24:14`, `로마 12:2`, `계시록 21:3, 4` | short names |
-| `고린도 전서 13:4-8`, `요한 1서 5:3` | spaced numbered books |
-| `다니엘서 2:44` | a trailing 서 |
-| `유다 20, 21`, `Philemon 4, 5` | verses of a one-chapter book, not chapters |
-
-A reference written **on a connector** counts too — only the reference takes
-the reference colour, the rest of the label stays the colour of its line.
-
-They are set apart on the map, collected into an index in the Talk panel, and
-tapping one hands it to **JW Library** — or opens jw.org in a tab, or any URL
-template of your own. The Talk panel chooses which, and the language. (A line
-label that is all reference is still edited from the toolbar, since tapping it
-opens the verse.)
-
-The index lists each reference **as you wrote it**; the canonical English form
-is used only to build the link, so a Korean outline stays Korean on screen.
-
-**Timings tell you whether it fits.** Give any part a length in minutes. A
-parent with no time of its own adds up its children, so you can plan top-down
-("10 minutes for this section"), bottom-up, or mix the two — an explicit time
-on a section always wins over the sum of its parts. Set the time you have and
-the panel shows where you stand, flagging both over-running and not filling
-the slot.
-
-**Speaker notes** live on any node, marked with ✎ on the map. Minutes and notes
-save as you type — no Enter needed. A run of keystrokes folds into a single
-undo step, and an edit always lands on the node you were typing into, even if
-you click away mid-word.
-
-**A rehearsal timer** counts up while you practise and says how much of your
-slot is left, turning amber near the end and red once it is spent. While it
-runs it also shows at the top of the canvas, so you can watch the map instead
-of the panel.
-
-**Tapping a verse hands it to JW Library.** References are turned into the
-eight-digit number jw.org and the app both use — two digits of book, three of
-chapter, three of verse, so 시편 34:18 becomes `19034018`, and a range becomes a
-pair — and handed over as `jwlibrary:///finder?bible=…`, in the language you
-pick.
-
-A browser is never told whether an app took a link like that, so the handoff
-always comes with a way through to **jw.org** in the same tap. Where JW Library
-is not installed — a Mac, for instance — switch *Tapping a verse* to **Open
-jw.org in a new tab**. A **Custom link** option takes any address with `{ref}`,
-or `{bible}` and `{locale}`, if you would rather use something else entirely.
-
-The address shapes and the language codes could not be checked against jw.org
-from where this was built, so both are easy to correct: pick **Custom link…**
-and paste what works for you.
-
-## Using it on an iPad (or any other device)
-
-An iPad cannot run the local server, so put the app on the web instead. It is
-static files, so **GitHub Pages** hosts it for nothing:
-
-1. In the repository, go to **Settings → Pages**.
-2. Under *Build and deployment*, set **Source: Deploy from a branch**, then
-   **Branch: `main`** and **folder: `/ (root)`**, and press Save.
-3. A minute later it is live at `https://<user>.github.io/<repo>/`.
-
-Open that on the iPad, then **Share → Add to Home Screen**. It gets an icon,
-opens without Safari's chrome, and — because the app registers a service worker
-— **keeps working with no connection** once it has loaded. Pushing to `main`
-updates it; the new version is picked up on the next load.
-
-On iPad, *Open…* reads from the Files app, so maps kept in iCloud Drive are
-available on every device. Safari has no file-handle API, so **Save a copy**
-writes a new file to Files rather than overwriting in place — on a Mac, Chrome
-or Edge give you true in-place saving.
-
-The app is touch-first as well as keyboard-first: tap to select, double-tap to
-edit, drag a node to re-parent it, drag the background to pan, pinch to zoom,
-and use the toolbar above a selected node where there is no keyboard.
-
-## Your maps are files
-
-Use <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>O</kbd> (or **Open…**) to open a map,
-and <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd> to save it. You can also drag a
-file onto the canvas to open it. The top bar shows the current file, with a dot
-when there are unsaved changes.
-
-- **`.json`** is the full format: text, formatting, highlights, branch colours,
-  collapse state and line labels. Use it for maps you will come back to.
-- **`.md`** is a plain outline — portable, but it carries the text only.
-
-In Chrome and Edge, saving writes back to the file you opened, so it behaves
-like any desktop app. Firefox and Safari have no such API, so there the button
-reads **Save a copy** and each save downloads a fresh file.
-
-Keeping maps as files means they live wherever you put them — a synced folder,
-a backup, version control — rather than inside one browser.
+```bash
+npm test               # 105 unit tests: parser, model, layout, scripture, timings, files
+npm run test:browser   # 93 end-to-end checks in Chromium (needs playwright)
+```
 
 ## Generating a map
 
@@ -136,8 +50,7 @@ so 2-space, 4-space and tab outlines are all understood:
 ```markdown
 # Product launch
 - Positioning
-  - Audience
-    - Ops teams
+  - Who it is for
   - Core message
 - Build
   - Beta programme
@@ -146,6 +59,9 @@ so 2-space, 4-space and tab outlines are all understood:
 A single top-level item becomes the root; several top-level items get a root
 wrapped around them. Editing the map keeps the panel in sync, so the outline is
 always a faithful text version of what you see.
+
+You do not have to start from an outline — press **New map** and build it on the
+canvas instead.
 
 ## Editing on the canvas
 
@@ -174,19 +90,25 @@ size it settles at, so nothing jumps when you finish.
 
 **Two handles** are how you branch off a card: the one out to the side adds a
 child, the one underneath adds a sibling. They show while a node is selected or
-being typed in, and they follow the card as it grows under your cursor. They take
-the colour of the branch they would extend. Further out again sits the button
-that closes the branch — and once closed, it becomes the bubble counting what
-is tucked away.
+being typed in, and they follow the card as it grows under your cursor. They
+take the colour of the branch they would extend. Further out again sits the
+button that closes the branch — and once closed, it becomes the bubble counting
+what is tucked away.
 
 **Drag a card anywhere.** Dropping on the middle of a node adds it to that
 node's children; dropping near a node's top or bottom edge places it directly
 above or below, with a line showing exactly where it will land — that is how
-you order a card among its siblings, at any depth. Moves that would put a
-node inside its own subtree are refused.
+you order a card among its siblings, at any depth. Moves that would put a node
+inside its own subtree are refused.
 
 Scroll or drag empty space to pan, or hold <kbd>Space</kbd> and drag from
 anywhere. <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + scroll, or pinch, to zoom.
+
+**Typing in Korean, Japanese or Chinese works properly.** Those languages go
+through an input method, where keystrokes build up a syllable that is not text
+yet. A key pressed mid-syllable belongs to the input method, so <kbd>Tab</kbd>
+and <kbd>Enter</kbd> let it finish rather than committing the card underneath
+it.
 
 ### Formatting and line labels
 
@@ -198,10 +120,27 @@ Any connector can carry a label: select the node below it and press **Label
 line**, or double-click the line itself. The column shifts outward to make room,
 so a labelled line never runs short of space.
 
-## Keeping your work
+## Your maps are files
 
-- **Files first.** Save to `.json` and your map is a real file you control. The
-  app warns before discarding unsaved changes to a file.
+Use <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>O</kbd> (or **Open…**) to open a map,
+and <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd> to save it. You can also drag a
+file onto the canvas to open it. The top bar shows the current file, with a dot
+when there are unsaved changes.
+
+- **`.json`** is the full format: text, formatting, highlights, branch colours,
+  collapse state, line labels, timings and speaker notes. Use it for maps you
+  will come back to.
+- **`.md`** is a plain outline — portable, but it carries the text only.
+
+In Chrome and Edge, saving writes back to the file you opened, so it behaves
+like any desktop app. Firefox and Safari have no such API, so there the button
+reads **Save a copy** and each save downloads a fresh file.
+
+Keeping maps as files means they live wherever you put them — a synced folder,
+a backup, version control — rather than inside one browser.
+
+### Keeping your work
+
 - **Autosave.** Every change is written to `localStorage`, along with your theme
   and layout choice, and restored on the next visit.
 - **Version history.** Timestamped snapshots are kept automatically (a run of
@@ -216,6 +155,91 @@ so a labelled line never runs short of space.
 - **Formatting is never lost to a regenerate.** The outline carries text only,
   so when you regenerate, highlights, bold, colours, collapse state and line
   labels are re-applied by matching nodes on their path.
+
+## Talk mode
+
+Turn it on with **Talk mode** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>T</kbd>).
+
+![Talk mode: minutes on each part, a fit-to-slot bar, a rehearsal timer and an index of the scriptures used](docs/talk-mode.png)
+
+**Timings tell you whether it fits.** Give any part a length in minutes. A
+parent with no time of its own adds up its children, so you can plan top-down
+("10 minutes for this section"), bottom-up, or mix the two — an explicit time
+on a section always wins over the sum of its parts. Set the time you have and
+the panel shows where you stand, flagging both over-running and not filling
+the slot.
+
+**Speaker notes** live on any node, marked with ✎ on the map. Minutes and notes
+save as you type — no Enter needed. A run of keystrokes folds into a single
+undo step, and an edit always lands on the node you were typing into, even if
+you click away mid-word.
+
+**A rehearsal timer** counts up while you practise and says how much of your
+slot is left, turning amber near the end and red once it is spent. While it
+runs it also shows at the top of the canvas, so you can watch the map instead
+of the panel.
+
+### Scripture references
+
+References are recognised wherever they appear in a node, in English or Korean,
+full names or abbreviations:
+
+| Written | Read as |
+| --- | --- |
+| `John 3:16`, `1 Cor 13:4-7`, `Gen. 1:1` | the usual English forms |
+| `시편 34:18`, `요한복음3:16` | Korean, with or without a space |
+| `요한복음 17장 3절`, `시편 83편 18절` | the Korean chapter and verse markers |
+| `시편 23편` | a whole chapter |
+| `마태 24:14`, `로마 12:2`, `계시록 21:3, 4` | short names |
+| `고린도 전서 13:4-8`, `요한 1서 5:3` | spaced numbered books |
+| `다니엘서 2:44` | a trailing 서 |
+| `유다 20, 21`, `Philemon 4, 5` | verses of a one-chapter book, not chapters |
+
+A reference written **on a connector** counts too — only the reference takes
+the reference colour, the rest of the label stays the colour of its line.
+
+They are set apart on the map and collected into an index in the Talk panel,
+which lists each one **as you wrote it**: the canonical English form is only
+used to build the link, so a Korean outline stays Korean on screen.
+
+**Tapping a verse opens it.** References become the eight-digit number jw.org
+and JW Library both use — two digits of book, three of chapter, three of verse,
+so 시편 34:18 becomes `19034018`, and a range becomes a pair — and are handed to
+the app as `jwlibrary:///finder?bible=…`, in the language you pick.
+
+A browser is never told whether an app took a link like that, so the handoff
+always comes with a way through to **jw.org** in the same tap. Where JW Library
+is not installed — a Mac, for instance — switch *Tapping a verse* to **Open
+jw.org in a new tab**. A **Custom link** option takes any address with `{ref}`,
+or `{bible}` and `{locale}`, if you would rather use something else entirely,
+which is also the way to correct an address shape or a language code that does
+not suit you.
+
+There is a **Print / PDF outline** too: the whole talk as text, with its
+timings, notes and references, for the lectern.
+
+## Putting it on the web
+
+A tablet cannot run the local server, so host the app instead. It is static
+files, so **GitHub Pages** does it for nothing:
+
+1. In your fork, go to **Settings → Pages**.
+2. Under *Build and deployment*, set **Source: Deploy from a branch**, then
+   **Branch: `main`** and **folder: `/ (root)`**, and press Save.
+3. A minute later it is live at `https://<user>.github.io/<repo>/`.
+
+Open that on the device, then **Share → Add to Home Screen**. It gets an icon,
+opens without the browser's chrome, and — because the app registers a service
+worker — **keeps working with no connection** once it has loaded. Pushing to
+`main` updates it; the new version is picked up on the next load.
+
+On iPad, *Open…* reads from the Files app, so maps kept in iCloud Drive are
+available on every device. Safari has no file-handle API, so **Save a copy**
+writes a new file to Files rather than overwriting in place.
+
+The app is touch-first as well as keyboard-first: tap to select, double-tap to
+edit, drag a node to re-parent it, drag the background to pan, pinch to zoom,
+and use the toolbar above a selected node where there is no keyboard.
 
 ## Layout
 
@@ -255,34 +279,35 @@ app.
 | `src/files.js` | Opening and saving real files, with a fallback for browsers without file handles |
 | `src/scripture.js` | Recognising scripture references, in English and Korean, and linking them |
 | `src/timing.js` | Talk timings: per-part minutes, roll-up and how it compares with your slot |
-| `sw.js` | Service worker: caches the app shell so it runs offline |
-| `manifest.webmanifest` | Makes the app installable to a home screen |
 | `src/exporters.js` | SVG/PNG/Markdown/JSON output and downloads |
 | `src/app.js` | Interaction state and wiring |
+| `sw.js` | Service worker: caches the app shell so it runs offline |
+| `manifest.webmanifest` | Makes the app installable to a home screen |
 
 `model.js`, `parser.js`, `measure.js` and `layout.js` have no DOM dependency,
 which is why the layout engine can be unit-tested in Node — including the
 invariant that no two nodes ever overlap.
 
-## Tests
+### Tests
 
-`npm test` runs 99 unit tests across the parser, the document model, the layout
-engine, scripture detection, talk timings, file handling and local storage — including the invariants that nodes
-never overlap, that siblings align only with each other, that regenerating
-preserves formatting, and that a `.json` file round-trips everything an outline
-cannot carry.
+`npm test` runs **105 unit tests** across the parser, the document model, the
+layout engine, scripture detection, talk timings, file handling and local
+storage — including the invariants that nodes never overlap, that siblings align
+only with each other, that regenerating preserves formatting, and that a `.json`
+file round-trips everything an outline cannot carry.
 
-`npm run test:browser` boots the app in Chromium and exercises editing,
-dragging, formatting, line labels, collapsing, undo, version history, opening
-and saving files, drag-and-drop, talk mode, timings, the scripture index, the
-printable outline, space-to-pan, the node handles, the rehearsal timer, the
-JW Library handoff, autosave and export (74 checks). It skips itself cleanly
-when Playwright is not installed.
+`npm run test:browser` boots the app in Chromium for **93 end-to-end checks**:
+editing, dragging, formatting, line labels, collapsing, undo, version history,
+opening and saving files, drag-and-drop, talk mode, timings, the scripture
+index, the printable outline, space-to-pan, the node handles, the rehearsal
+timer, the JW Library handoff, autosave and export — plus verse taps under touch
+emulation at iPad size, and Korean typed through a real input method. It skips
+itself cleanly when Playwright is not installed.
 
 ## Browser support
 
 Any current browser with ES modules and `<dialog>`: Chrome, Edge, Firefox and
-Safari 15.4+.
+Safari 15.4 or newer, on desktop, tablet and phone.
 
 ## Licence
 
