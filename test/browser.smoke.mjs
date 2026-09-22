@@ -616,6 +616,91 @@ try {
   await page.selectOption('#talk-link', 'jwlibrary');
   await page.waitForTimeout(200);
 
+  // On an iPad the reference has to answer a finger. Safari does not hit-test
+  // a <tspan>, so a `click` on one never arrives and the tap used to do
+  // nothing; the runs are measured instead. Checked under touch emulation.
+  {
+    const touch = await browser.newContext({
+      viewport: { width: 1180, height: 820 }, hasTouch: true,
+      userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15'
+        + ' (KHTML, like Gecko) Version/17.5 Safari/605.1.15',
+    });
+    const pad = await touch.newPage();
+    pad.on('pageerror', (error) => check(`no error on the iPad page: ${error.message}`, false));
+    await pad.goto(BASE, { waitUntil: 'networkidle' });
+    await pad.waitForTimeout(400);
+    await pad.fill('#outline', '# 장례사\n- 위로 필요\n  - 시편 34:18 를 천천히 읽기\n  - 유다 20, 21');
+    await pad.click('#btn-generate');
+    await pad.waitForTimeout(400);
+    await pad.click('#btn-talk');
+    await pad.waitForTimeout(400);
+
+    // By what it says, not by position: a drag below reorders the cards.
+    const centre = (words) => pad.evaluate((text) => {
+      const cite = [...document.querySelectorAll('.scripture')].find((c) => c.textContent.includes(text));
+      const rect = cite.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }, words);
+    const opened = () => pad.evaluate(() => window.mindmapper.lastVerseLink?.app ?? null);
+    // Before each tap: forget the last link, and put the floating toolbar of
+    // the selected card away, since it is free to sit over a neighbour.
+    const clear = () => pad.evaluate(() => {
+      window.mindmapper.lastVerseLink = null;
+      document.getElementById('node-toolbar').hidden = true;
+    });
+
+    // A card that happens to start with a reference can still be dragged.
+    // This goes first, while nothing is selected: the floating toolbar of a
+    // selected card would otherwise sit over the card being aimed at.
+    const outlineBefore = await pad.inputValue('#outline');
+    let spot = await centre('시편');
+    const target = await pad.evaluate(() => {
+      // onto its sibling, which reorders it: a real move, not a no-op
+      const node = [...document.querySelectorAll('.node')].find((n) => n.textContent.includes('유다'));
+      const rect = node.querySelector('.node-hit').getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.bottom - 2 };
+    });
+    await pad.mouse.move(spot.x, spot.y);
+    await pad.mouse.down();
+    await pad.mouse.move(target.x, target.y, { steps: 12 });
+    await pad.mouse.up();
+    await pad.waitForTimeout(400);
+    check('dragging from a reference moves the card instead of opening it',
+      (await opened()) === null && (await pad.inputValue('#outline')) !== outlineBefore,
+      `opened ${await opened()}; outline ${JSON.stringify(await pad.inputValue('#outline'))}`);
+
+    // A finger tap opens the verse.
+    await clear();
+    spot = await centre('시편');
+    await pad.touchscreen.tap(spot.x, spot.y);
+    await pad.waitForTimeout(400);
+    check('a finger tap on a reference opens it',
+      (await opened())?.includes('bible=19034018'), String(await opened()));
+
+    // A fingertip is wider than a line of text, so a little off still counts.
+    await clear();
+    spot = await centre('유다');
+    await pad.touchscreen.tap(spot.x, spot.y + 7);
+    await pad.waitForTimeout(400);
+    check('a tap just below the words still counts',
+      (await opened())?.includes('bible=65001020-65001021'), String(await opened()));
+
+    // But the plain words of the same card are not a reference.
+    await clear();
+    const plain = await pad.evaluate(() => {
+      const cite = [...document.querySelectorAll('.scripture')].find((c) => c.textContent.includes('시편'));
+      const box = cite.closest('.node').querySelector('.node-hit').getBoundingClientRect();
+      const rect = cite.getBoundingClientRect();
+      return { x: (rect.right + box.right) / 2, y: rect.top + rect.height / 2 };
+    });
+    await pad.touchscreen.tap(plain.x, plain.y);
+    await pad.waitForTimeout(350);
+    check('tapping the rest of the words does nothing', (await opened()) === null, String(await opened()));
+
+    await touch.close();
+  }
+
+
   // Minutes and notes need no Enter, and land on the node being typed into.
   await clickNode('Grief is natural');
   await page.waitForTimeout(200);
@@ -667,6 +752,125 @@ try {
   await page.waitForTimeout(500);
   check('map survives a reload', (await outline()) === beforeReload);
   check('the file name survives a reload', (await page.textContent('#file-name')) === 'dropped.md');
+
+  // A verse written on a connector is a verse too: drawn as one, listed in the
+  // index, and tappable. Only the reference is recoloured -- the rest of the
+  // label keeps the colour of its line.
+  {
+    await page.click('#btn-talk'); // these last checks need talk mode back on
+    await page.waitForTimeout(400);
+    const labelled = await page.evaluate(() => {
+      const doc = window.mindmapper.doc;
+      const id = doc.root.children[0].children[0].id;
+      doc.setEdgeLabel(id, '참조 요한 11장 보기');
+      window.mindmapper.refresh();
+      return id;
+    });
+    await page.waitForTimeout(400);
+    check('a reference on a connector is drawn as a reference',
+      (await page.locator('.edge-label .scripture').count()) === 1,
+      await page.evaluate(() => document.querySelector('.edge-label text')?.innerHTML));
+    check('the rest of the label keeps its line colour', await page.evaluate(() => {
+      const runs = [...document.querySelector('.edge-label text').childNodes];
+      const fill = (run) => getComputedStyle(run).fill;
+      return runs.length === 3 && fill(runs[0]) === fill(runs[2]) && fill(runs[1]) !== fill(runs[0]);
+    }));
+    check('it is listed among the scriptures', await page.evaluate(() =>
+      [...document.querySelectorAll('.ref-row')].some((row) => row.textContent.includes('요한 11장'))));
+
+    await page.evaluate(() => { window.mindmapper.lastVerseLink = null; });
+    await page.click('.edge-label .scripture');
+    await page.waitForTimeout(400);
+    check('tapping it opens the chapter',
+      (await page.evaluate(() => window.mindmapper.lastVerseLink?.app ?? ''))?.includes('bible=43011000'),
+      await page.evaluate(() => JSON.stringify(window.mindmapper.lastVerseLink)));
+    await page.evaluate((id) => {
+      window.mindmapper.doc.setEdgeLabel(id, '');
+      window.mindmapper.refresh();
+    }, labelled);
+    await page.waitForTimeout(300);
+  }
+
+  // A note is committed a beat after typing stops, so saving or leaving the
+  // page straight after typing one must settle it first -- otherwise the file
+  // is written without the note.
+  {
+    await clickNode('Grief is natural');
+    await page.waitForTimeout(250);
+    const saved = await page.evaluate(() => {
+      const field = document.getElementById('talk-note');
+      field.focus();
+      field.value = 'Hold the room a moment';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      // No pause: the commit is still pending at this point.
+      const pending = !JSON.stringify(window.mindmapper.doc.toJSON()).includes('Hold the room');
+      const event = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true });
+      document.activeElement.dispatchEvent(event); // what Ctrl+S would write
+      return { pending, written: JSON.stringify(window.mindmapper.doc.toJSON()).includes('Hold the room') };
+    });
+    check('saving straight after typing a note writes the note',
+      saved.pending === true && saved.written === true, JSON.stringify(saved));
+
+    const autosaved = await page.evaluate(() => {
+      const field = document.getElementById('talk-note');
+      field.focus();
+      field.value = 'Hold the room and breathe';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      window.dispatchEvent(new Event('beforeunload', { cancelable: true }));
+      return (localStorage.getItem('mindmapper:v1') || '').includes('and breathe');
+    });
+    check('leaving the page keeps a note typed a moment earlier', autosaved);
+  }
+
+  // Typing Korean goes through an input method: keystrokes build a syllable
+  // that is not text yet. A key pressed then belongs to the IME, and acting on
+  // it used to commit the card and move the focus away mid-syllable -- the
+  // IME then put the finished syllable into the card after, which is how the
+  // last word came out repeated.
+  {
+    const cdp = await page.context().newCDPSession(page);
+    const compose = (text) => cdp.send('Input.imeSetComposition',
+      { text, selectionStart: text.length, selectionEnd: text.length });
+
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    await clickNode('Grief is natural');
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Tab'); // a fresh child to type into
+    await page.waitForTimeout(400);
+
+    await compose('부활의 희마'); // the last syllable still forming
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(400);
+    check('Tab mid-syllable leaves the card alone',
+      (await page.isVisible('.inline-editor')) && (await page.inputValue('.inline-editor')) === '부활의 희마',
+      await page.evaluate(() => JSON.stringify(document.querySelector('.inline-editor')?.value ?? null)));
+    check('and makes no card while the syllable is forming',
+      !(await page.inputValue('#outline')).includes('희마'));
+
+    await compose('부활의 희망');
+    await cdp.send('Input.insertText', { text: '부활의 희망' }); // the IME lands it
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(500);
+    const outline = await page.inputValue('#outline');
+    check('Tab once the syllable has landed makes the card',
+      /- 부활의 희망\n\s+- (\n|$)/.test(outline) && (await page.inputValue('.inline-editor')) === '',
+      JSON.stringify(outline));
+    check('the word is written once, not twice',
+      (outline.match(/희망/g) || []).length === 1, JSON.stringify(outline));
+
+    await compose('결론 말ㅆ');
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(400);
+    check('Enter mid-syllable confirms it rather than closing the card',
+      await page.isVisible('.inline-editor'),
+      await page.evaluate(() => JSON.stringify(document.querySelector('.inline-editor')?.value ?? null)));
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+  }
 
   check('no console errors', errors.length === 0, errors.join(' | '));
 } finally {

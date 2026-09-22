@@ -74,7 +74,14 @@ export function computeLayout(root, options = {}) {
       children: [],
       isRoot: depth === 0,
       label: label
-        ? { text: node.edgeLabel, w: Math.round(label.width + EDGE_LABEL_STYLE.padX * 2), h: Math.round(label.height + EDGE_LABEL_STYLE.padY * 2) }
+        ? {
+          text: node.edgeLabel,
+          // Split like a card's text, so a reference written on the line is
+          // drawn as a reference and can be tapped.
+          segments: talkMode ? segmentLine(node.edgeLabel) : null,
+          w: Math.round(label.width + EDGE_LABEL_STYLE.padX * 2),
+          h: Math.round(label.height + EDGE_LABEL_STYLE.padY * 2),
+        }
         : null,
       collapsed: Boolean(node.collapsed) && node.children.length > 0,
       hiddenCount: node.collapsed ? countAll(node) : 0,

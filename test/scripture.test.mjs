@@ -5,6 +5,7 @@ import {
   jwUrl, segmentLine,
 } from '../src/scripture.js';
 import { parseOutline } from '../src/parser.js';
+import { readFileSync } from 'node:fs';
 
 const canonicals = (text) => findReferences(text).map((reference) => reference.canonical);
 
@@ -125,4 +126,57 @@ test('collects every reference in a tree, in reading order', () => {
   const found = collectReferences(root);
   assert.deepEqual(found.map((entry) => entry.reference.canonical), ['Psalms 34:18', 'Psalms 147:3', 'John 11:35']);
   assert.equal(found[0].node.text, '시편 34:18', 'each reference knows its node');
+});
+
+test('reads the Korean chapter and verse markers', () => {
+  assert.deepEqual(canonicals('요한복음 17장 3절'), ['John 17:3']);
+  assert.deepEqual(canonicals('시편 83편 18절'), ['Psalms 83:18']);
+  assert.deepEqual(canonicals('잠언 3장 5, 6절'), ['Proverbs 3:5,6']);
+  assert.deepEqual(canonicals('전도서 3장 1~8절'), ['Ecclesiastes 3:1-8'], 'the wave dash is a range');
+  assert.deepEqual(canonicals('시편 23편'), ['Psalms 23'], 'the chapter marker alone is a chapter');
+});
+
+test('accepts the short and spaced Korean book names', () => {
+  assert.deepEqual(canonicals('마태 24:14'), ['Matthew 24:14']);
+  assert.deepEqual(canonicals('요한 17:3'), ['John 17:3']);
+  assert.deepEqual(canonicals('로마 12:2'), ['Romans 12:2']);
+  assert.deepEqual(canonicals('고린도 전서 13:4-8'), ['1 Corinthians 13:4-8']);
+  assert.deepEqual(canonicals('요한 1서 5:3'), ['1 John 5:3'], 'the numbered book still wins over John');
+  assert.deepEqual(canonicals('베드로 전서 5:7'), ['1 Peter 5:7']);
+  assert.deepEqual(canonicals('계시록 21:3, 4'), ['Revelation 21:3,4']);
+  assert.deepEqual(canonicals('다니엘서 2:44'), ['Daniel 2:44'], 'a trailing 서 is fine');
+  assert.deepEqual(canonicals('이사야서 40:26'), ['Isaiah 40:26']);
+});
+
+test('a bare number after a one-chapter book is the verse', () => {
+  const [jude] = findReferences('유다 20, 21');
+  assert.equal(jude.canonical, 'Jude 1:20,21');
+  assert.equal(jude.text, '유다 20, 21', 'the whole list belongs to the reference');
+  assert.equal(bibleNumber(jude), '65001020-65001021');
+  assert.deepEqual(canonicals('Philemon 4, 5'), ['Philemon 1:4,5']);
+  assert.deepEqual(canonicals('요한이서 6'), ['2 John 1:6']);
+  assert.deepEqual(canonicals('유다서 20절'), ['Jude 1:20']);
+  assert.deepEqual(canonicals('John 20'), ['John 20'], 'a book with many chapters is unaffected');
+});
+
+test('a reference claims no more of the line than it owns', () => {
+  assert.deepEqual(segmentLine('시편 23편 을 보라').map((run) => run.text), ['시편 23편', ' 을 보라']);
+  assert.deepEqual(segmentLine('요한복음 3장 16 참조').map((run) => run.text), ['요한복음 3장 16', ' 참조']);
+});
+
+test('the pattern needs no lookbehind, which older Safari cannot compile', () => {
+  const source = readFileSync(new URL('../src/scripture.js', import.meta.url), 'utf8');
+  assert.equal(/\(\?<[=!]/.test(source), false, 'a regex that will not compile takes the page down');
+  assert.deepEqual(canonicals('창세기 1:1'), ['Genesis 1:1'], 'word boundaries still hold');
+  assert.deepEqual(canonicals('Xjohn 3:16'), [], 'a reference must start a word');
+});
+
+test('a reference written on the line into a node counts as that node\'s', () => {
+  const root = parseOutline('# 예수\n- 나사로 죽음\n  - 많은 사람 슬픔');
+  const lazarus = root.children[0];
+  lazarus.edgeLabel = '요한 11장';
+  const found = collectReferences(root);
+  assert.deepEqual(found.map((item) => item.reference.canonical), ['John 11']);
+  assert.equal(found[0].node, lazarus, 'it belongs to the node the line runs into');
+  assert.equal(found[0].onLabel, true);
 });

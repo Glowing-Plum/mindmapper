@@ -49,6 +49,12 @@ export function createInlineEditor(host, { onCommit, onCancel, onChord, onResize
 
   let current = null;
 
+  // True while an input method is mid-syllable. Typing Korean, Japanese or
+  // Chinese goes through an IME: keystrokes build up a syllable that is not
+  // yet text, and the browser marks them `isComposing`. A key pressed then
+  // belongs to the IME, not to us.
+  let composing = false;
+
   function place(target, viewport) {
     const k = viewport.state.k;
     const { w, h, lines } = sizeFor(target, input.value);
@@ -86,6 +92,7 @@ export function createInlineEditor(host, { onCommit, onCancel, onChord, onResize
 
   function open(target, viewport, { selectAll = true } = {}) {
     current = { target, viewport };
+    composing = false;
     input.value = target.text ?? '';
     input.dataset.kind = target.kind;
     input.style.display = 'block';
@@ -110,6 +117,21 @@ export function createInlineEditor(host, { onCommit, onCancel, onChord, onResize
 
   input.addEventListener('keydown', (event) => {
     event.stopPropagation(); // canvas shortcuts must not fire while typing
+
+    // Let the IME have its keystroke. Acting on it would commit the card and
+    // move the focus away while a syllable is still half-formed -- and the
+    // IME, finishing a moment later, would put that syllable into whatever
+    // has the focus by then, which is how the last word ended up repeated in
+    // the card after it. keyCode 229 is the older way browsers said the same
+    // thing, and the flag covers engines that report it late.
+    if (composing || event.isComposing || event.keyCode === 229) {
+      // Tab would still move the focus out of the editor by default, closing
+      // the card mid-syllable. Stay put: the syllable lands, and the next Tab
+      // -- no longer part of a composition -- makes the card.
+      if (event.key === 'Tab') event.preventDefault();
+      return;
+    }
+
     const mod = event.ctrlKey || event.metaKey;
     if (mod && ['b', 'i', 'h'].includes(event.key.toLowerCase())) {
       // Formatting shortcuts still apply to the node being edited.
@@ -130,13 +152,27 @@ export function createInlineEditor(host, { onCommit, onCancel, onChord, onResize
     }
   });
 
+  input.addEventListener('compositionstart', () => { composing = true; });
+  input.addEventListener('compositionend', () => {
+    composing = false;
+    // The finished syllable changes the width, and the resize below is
+    // skipped for the input events that carried the composition.
+    if (current) place(current.target, current.viewport);
+  });
+
   // Resize as you type rather than scrolling inside a box fixed at the size
   // the text used to be.
   input.addEventListener('input', () => {
     if (current) place(current.target, current.viewport);
   });
 
-  input.addEventListener('blur', () => close({ commit: true }));
+  input.addEventListener('blur', () => {
+    // Closing mid-syllable would hand the IME a textarea that is no longer
+    // there; the composition is left to finish and the blur that follows it
+    // does the closing.
+    composing = false;
+    close({ commit: true });
+  });
 
   return {
     open,
