@@ -39,9 +39,14 @@ English or Korean, full names or abbreviations:
 | `다니엘서 2:44` | a trailing 서 |
 | `유다 20, 21`, `Philemon 4, 5` | verses of a one-chapter book, not chapters |
 
+A reference written **on a connector** counts too — only the reference takes
+the reference colour, the rest of the label stays the colour of its line.
+
 They are set apart on the map, collected into an index in the Talk panel, and
 tapping one hands it to **JW Library** — or opens jw.org in a tab, or any URL
-template of your own. The Talk panel chooses which, and the language.
+template of your own. The Talk panel chooses which, and the language. (A line
+label that is all reference is still edited from the toolbar, since tapping it
+opens the verse.)
 
 The index lists each reference **as you wrote it**; the canonical English form
 is used only to build the link, so a Korean outline stays Korean on screen.

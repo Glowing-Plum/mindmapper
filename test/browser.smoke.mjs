@@ -700,6 +700,7 @@ try {
     await touch.close();
   }
 
+
   // Minutes and notes need no Enter, and land on the node being typed into.
   await clickNode('Grief is natural');
   await page.waitForTimeout(200);
@@ -751,6 +752,75 @@ try {
   await page.waitForTimeout(500);
   check('map survives a reload', (await outline()) === beforeReload);
   check('the file name survives a reload', (await page.textContent('#file-name')) === 'dropped.md');
+
+  // A verse written on a connector is a verse too: drawn as one, listed in the
+  // index, and tappable. Only the reference is recoloured -- the rest of the
+  // label keeps the colour of its line.
+  {
+    await page.click('#btn-talk'); // these last checks need talk mode back on
+    await page.waitForTimeout(400);
+    const labelled = await page.evaluate(() => {
+      const doc = window.mindmapper.doc;
+      const id = doc.root.children[0].children[0].id;
+      doc.setEdgeLabel(id, '참조 요한 11장 보기');
+      window.mindmapper.refresh();
+      return id;
+    });
+    await page.waitForTimeout(400);
+    check('a reference on a connector is drawn as a reference',
+      (await page.locator('.edge-label .scripture').count()) === 1,
+      await page.evaluate(() => document.querySelector('.edge-label text')?.innerHTML));
+    check('the rest of the label keeps its line colour', await page.evaluate(() => {
+      const runs = [...document.querySelector('.edge-label text').childNodes];
+      const fill = (run) => getComputedStyle(run).fill;
+      return runs.length === 3 && fill(runs[0]) === fill(runs[2]) && fill(runs[1]) !== fill(runs[0]);
+    }));
+    check('it is listed among the scriptures', await page.evaluate(() =>
+      [...document.querySelectorAll('.ref-row')].some((row) => row.textContent.includes('요한 11장'))));
+
+    await page.evaluate(() => { window.mindmapper.lastVerseLink = null; });
+    await page.click('.edge-label .scripture');
+    await page.waitForTimeout(400);
+    check('tapping it opens the chapter',
+      (await page.evaluate(() => window.mindmapper.lastVerseLink?.app ?? ''))?.includes('bible=43011000'),
+      await page.evaluate(() => JSON.stringify(window.mindmapper.lastVerseLink)));
+    await page.evaluate((id) => {
+      window.mindmapper.doc.setEdgeLabel(id, '');
+      window.mindmapper.refresh();
+    }, labelled);
+    await page.waitForTimeout(300);
+  }
+
+  // A note is committed a beat after typing stops, so saving or leaving the
+  // page straight after typing one must settle it first -- otherwise the file
+  // is written without the note.
+  {
+    await clickNode('Grief is natural');
+    await page.waitForTimeout(250);
+    const saved = await page.evaluate(() => {
+      const field = document.getElementById('talk-note');
+      field.focus();
+      field.value = 'Hold the room a moment';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      // No pause: the commit is still pending at this point.
+      const pending = !JSON.stringify(window.mindmapper.doc.toJSON()).includes('Hold the room');
+      const event = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true });
+      document.activeElement.dispatchEvent(event); // what Ctrl+S would write
+      return { pending, written: JSON.stringify(window.mindmapper.doc.toJSON()).includes('Hold the room') };
+    });
+    check('saving straight after typing a note writes the note',
+      saved.pending === true && saved.written === true, JSON.stringify(saved));
+
+    const autosaved = await page.evaluate(() => {
+      const field = document.getElementById('talk-note');
+      field.focus();
+      field.value = 'Hold the room and breathe';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      window.dispatchEvent(new Event('beforeunload', { cancelable: true }));
+      return (localStorage.getItem('mindmapper:v1') || '').includes('and breathe');
+    });
+    check('leaving the page keeps a note typed a moment earlier', autosaved);
+  }
 
   check('no console errors', errors.length === 0, errors.join(' | '));
 } finally {

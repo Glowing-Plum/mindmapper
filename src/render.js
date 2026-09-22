@@ -193,9 +193,22 @@ export function createRenderer(svg) {
     setRect(bg, -edge.label.w / 2, -edge.label.h / 2, edge.label.w, edge.label.h, 5);
     // Inline, so it travels with the element into an exported SVG.
     text.style.fill = edge.label.color;
-    if (text.dataset.key !== edge.label.text) {
-      text.dataset.key = edge.label.text;
-      text.textContent = edge.label.text;
+    const runs = edge.label.segments ?? [{ text: edge.label.text, reference: null }];
+    const key = runs.map((run) => `${run.reference ? '@' : ''}${run.text}`).join('\u0000');
+    if (text.dataset.key !== key) {
+      text.dataset.key = key;
+      text.textContent = '';
+      for (const run of runs) {
+        // A reference keeps the reference colour from the stylesheet; the rest
+        // of the label stays the colour of its line.
+        const tspan = svgEl('tspan', {});
+        if (run.reference) {
+          tspan.setAttribute('class', 'scripture');
+          tspan.dataset.reference = run.reference.canonical;
+        }
+        tspan.textContent = run.text;
+        text.append(tspan);
+      }
     }
     text.setAttribute('y', 4);
     return entry;

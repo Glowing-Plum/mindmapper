@@ -279,11 +279,16 @@ export function jwUrl(reference, { template, locale = 'E' } = {}) {
     .replace(/\{ref\}/g, encodeURIComponent(reference.canonical));
 }
 
-/** Every reference in a tree, in reading order, with the node that holds it. */
+/**
+ * Every reference in a tree, in reading order, with the node that holds it.
+ * A reference written on the line into a node counts as that node's: people
+ * put the citation on the connector as readily as in the card.
+ */
 export function collectReferences(root) {
   const found = [];
   const walk = (node) => {
-    for (const reference of findReferences(node.text)) found.push({ node, reference });
+    for (const reference of findReferences(node.edgeLabel)) found.push({ node, reference, onLabel: true });
+    for (const reference of findReferences(node.text)) found.push({ node, reference, onLabel: false });
     for (const child of node.children) walk(child);
   };
   walk(root);

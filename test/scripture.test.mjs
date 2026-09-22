@@ -170,3 +170,13 @@ test('the pattern needs no lookbehind, which older Safari cannot compile', () =>
   assert.deepEqual(canonicals('창세기 1:1'), ['Genesis 1:1'], 'word boundaries still hold');
   assert.deepEqual(canonicals('Xjohn 3:16'), [], 'a reference must start a word');
 });
+
+test('a reference written on the line into a node counts as that node\'s', () => {
+  const root = parseOutline('# 예수\n- 나사로 죽음\n  - 많은 사람 슬픔');
+  const lazarus = root.children[0];
+  lazarus.edgeLabel = '요한 11장';
+  const found = collectReferences(root);
+  assert.deepEqual(found.map((item) => item.reference.canonical), ['John 11']);
+  assert.equal(found[0].node, lazarus, 'it belongs to the node the line runs into');
+  assert.equal(found[0].onLabel, true);
+});

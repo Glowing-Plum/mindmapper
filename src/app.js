@@ -619,14 +619,22 @@ function liveCommit(field, id, run) {
   }, 300);
 }
 
-function flushLiveCommit() {
+/**
+ * Commits a pending minutes or notes keystroke straight away.
+ *
+ * Anything that writes the document out -- a save, an export, closing the tab
+ * -- has to call this first. Otherwise it writes the state from just before
+ * the last thing that was typed, and the note quietly does not make it into
+ * the file.
+ */
+function flushLiveCommit({ render = true } = {}) {
   if (!live.run) return;
   clearTimeout(live.timer);
   const pending = live.run;
   live.run = null;
   live.at = Date.now();
   pending();
-  refresh({ syncOutline: false });
+  if (render) refresh({ syncOutline: false });
 }
 
 // ------------------------------------------------------------------ files
@@ -696,6 +704,7 @@ async function openFromFile() {
 
 /** Ctrl+S: write back to the open file, or ask where to put it the first time. */
 async function saveToFile({ saveAs = false } = {}) {
+  flushLiveCommit(); // the note you just typed belongs in the file
   const text = serialiseDoc(doc.toJSON());
   try {
     if (!saveAs && state.file.handle) {
@@ -1057,6 +1066,9 @@ ui.canvas.addEventListener('pointerdown', (event) => {
   if (event.button !== 0 || viewport.modifiers.spaceHeld) return;
   const id = nodeIdFromEvent(event);
   if (!id) {
+    // A reference written on a connector is tappable too. The label itself is
+    // still edited from the toolbar, or by double-clicking clear of the words.
+    armScriptureTap(event);
     if (!editor.isOpen()) {
       state.selectedId = null;
       refresh({ syncOutline: false });
@@ -1123,7 +1135,8 @@ function scriptureAt(nodeEl, clientX, clientY, slack) {
  */
 function armScriptureTap(event) {
   const slack = event.pointerType === 'mouse' ? 2 : 11;
-  const cite = scriptureAt(event.target.closest('.node'), event.clientX, event.clientY, slack);
+  const holder = event.target.closest('.node, .edge-label');
+  const cite = scriptureAt(holder, event.clientX, event.clientY, slack);
   if (!cite) return;
   // Read these now: re-rendering the map replaces the element underneath us.
   const canonical = cite.dataset.reference ?? '';
@@ -1453,6 +1466,7 @@ function setMode(mode) {
 }
 
 async function exportAs(kind) {
+  flushLiveCommit(); // as above: export what is on screen, not what preceded it
   const name = slugify(doc.root.text);
   try {
     if (kind === 'md') {
@@ -1746,6 +1760,7 @@ function bindChrome() {
   });
 
   window.addEventListener('beforeunload', (event) => {
+    flushLiveCommit({ render: false }); // a note typed a moment ago still counts
     saveState({
       doc: doc.toJSON(),
       theme: state.theme,
