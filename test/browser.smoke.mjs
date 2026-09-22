@@ -822,6 +822,56 @@ try {
     check('leaving the page keeps a note typed a moment earlier', autosaved);
   }
 
+  // Typing Korean goes through an input method: keystrokes build a syllable
+  // that is not text yet. A key pressed then belongs to the IME, and acting on
+  // it used to commit the card and move the focus away mid-syllable -- the
+  // IME then put the finished syllable into the card after, which is how the
+  // last word came out repeated.
+  {
+    const cdp = await page.context().newCDPSession(page);
+    const compose = (text) => cdp.send('Input.imeSetComposition',
+      { text, selectionStart: text.length, selectionEnd: text.length });
+
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    await clickNode('Grief is natural');
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Tab'); // a fresh child to type into
+    await page.waitForTimeout(400);
+
+    await compose('부활의 희마'); // the last syllable still forming
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(400);
+    check('Tab mid-syllable leaves the card alone',
+      (await page.isVisible('.inline-editor')) && (await page.inputValue('.inline-editor')) === '부활의 희마',
+      await page.evaluate(() => JSON.stringify(document.querySelector('.inline-editor')?.value ?? null)));
+    check('and makes no card while the syllable is forming',
+      !(await page.inputValue('#outline')).includes('희마'));
+
+    await compose('부활의 희망');
+    await cdp.send('Input.insertText', { text: '부활의 희망' }); // the IME lands it
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(500);
+    const outline = await page.inputValue('#outline');
+    check('Tab once the syllable has landed makes the card',
+      /- 부활의 희망\n\s+- (\n|$)/.test(outline) && (await page.inputValue('.inline-editor')) === '',
+      JSON.stringify(outline));
+    check('the word is written once, not twice',
+      (outline.match(/희망/g) || []).length === 1, JSON.stringify(outline));
+
+    await compose('결론 말ㅆ');
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(400);
+    check('Enter mid-syllable confirms it rather than closing the card',
+      await page.isVisible('.inline-editor'),
+      await page.evaluate(() => JSON.stringify(document.querySelector('.inline-editor')?.value ?? null)));
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+  }
+
   check('no console errors', errors.length === 0, errors.join(' | '));
 } finally {
   await browser.close();
