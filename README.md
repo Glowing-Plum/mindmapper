@@ -37,7 +37,7 @@ server on, host it — see [Putting it on the web](#putting-it-on-the-web).
 
 ```bash
 npm test               # 105 unit tests: parser, model, layout, scripture, timings, files
-npm run test:browser   # 101 end-to-end checks in Chromium (needs playwright)
+npm run test:browser   # 102 end-to-end checks in Chromium (needs playwright)
 ```
 
 ## Generating a map
@@ -207,20 +207,19 @@ you want the list.
 **Tapping a verse opens it.** References become the eight-digit number jw.org
 and JW Library both use — two digits of book, three of chapter, three of verse,
 so 시편 34:18 becomes `19034018`, and a range becomes a pair — and are handed to
-the app as `jwlibrary:///finder?bible=…`. No language is sent: JW Library
-opens the verse in whichever Bible it is already set to.
+JW Library as the same jw.org address the app writes when you share a verse.
+The app claims that address, so on a phone or tablet with JW Library installed
+the verse opens straight in the app, with no question first; without the app it
+opens on jw.org. No language is sent: JW Library opens the verse in whichever
+Bible it is already set to.
 
-On an iPad or iPhone, Safari asks *"Open in JW Library?"* every time a page
-uses that kind of link; a website cannot turn the question off. **Open in JW
-Library, without asking** uses the ordinary jw.org address JW Library itself
-writes when you share a verse instead. Where the device lets the app take that
-address the verse opens there with no question, and otherwise it opens on
-jw.org.
-
-A browser is never told whether an app took a link like that, so the handoff
-always comes with a way through to **jw.org** in the same tap. Where JW Library
-is not installed — a Mac, for instance — switch *Tapping a verse* to **Open
-jw.org in a new tab**, which is where you choose a language. A **Custom link** option takes any address with `{ref}`,
+The other app option, **Open in JW Library (app link, asks first on iPad)**,
+uses the app's own `jwlibrary:///finder?bible=…` link instead. Safari asks
+*"Open in JW Library?"* every time a page follows one of those, and a website
+cannot turn the question off, so it is there only as a fallback. A browser is
+never told whether an app took a link like that, so it always comes with a way
+through to **jw.org** in the same tap. To pick a language on the web, switch
+*Tapping a verse* to **Open jw.org in a new tab**. A **Custom link** option takes any address with `{ref}`,
 or `{bible}` and `{locale}`, if you would rather use something else entirely,
 which is also the way to correct an address shape or a language code that does
 not suit you.
@@ -306,7 +305,7 @@ storage — including the invariants that nodes never overlap, that siblings ali
 only with each other, that regenerating preserves formatting, and that a `.json`
 file round-trips everything an outline cannot carry.
 
-`npm run test:browser` boots the app in Chromium for **101 end-to-end checks**:
+`npm run test:browser` boots the app in Chromium for **102 end-to-end checks**:
 editing, dragging, formatting, line labels, collapsing, undo, version history,
 opening and saving files, drag-and-drop, talk mode, timings, the scripture
 index, the printable outline, space-to-pan, the node handles, the rehearsal
