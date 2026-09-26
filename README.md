@@ -37,7 +37,7 @@ server on, host it — see [Putting it on the web](#putting-it-on-the-web).
 
 ```bash
 npm test               # 105 unit tests: parser, model, layout, scripture, timings, files
-npm run test:browser   # 93 end-to-end checks in Chromium (needs playwright)
+npm run test:browser   # 99 end-to-end checks in Chromium (needs playwright)
 ```
 
 ## Generating a map
@@ -200,17 +200,20 @@ the reference colour, the rest of the label stays the colour of its line.
 
 They are set apart on the map and collected into an index in the Talk panel,
 which lists each one **as you wrote it**: the canonical English form is only
-used to build the link, so a Korean outline stays Korean on screen.
+used to build the link, so a Korean outline stays Korean on screen. The index
+starts folded away, so the speaker notes above it get the room; open it when
+you want the list.
 
 **Tapping a verse opens it.** References become the eight-digit number jw.org
 and JW Library both use — two digits of book, three of chapter, three of verse,
 so 시편 34:18 becomes `19034018`, and a range becomes a pair — and are handed to
-the app as `jwlibrary:///finder?bible=…`, in the language you pick.
+the app as `jwlibrary:///finder?bible=…`. No language is sent: JW Library
+opens the verse in whichever Bible it is already set to.
 
 A browser is never told whether an app took a link like that, so the handoff
 always comes with a way through to **jw.org** in the same tap. Where JW Library
 is not installed — a Mac, for instance — switch *Tapping a verse* to **Open
-jw.org in a new tab**. A **Custom link** option takes any address with `{ref}`,
+jw.org in a new tab**, which is where you choose a language. A **Custom link** option takes any address with `{ref}`,
 or `{bible}` and `{locale}`, if you would rather use something else entirely,
 which is also the way to correct an address shape or a language code that does
 not suit you.
@@ -296,7 +299,7 @@ storage — including the invariants that nodes never overlap, that siblings ali
 only with each other, that regenerating preserves formatting, and that a `.json`
 file round-trips everything an outline cannot carry.
 
-`npm run test:browser` boots the app in Chromium for **93 end-to-end checks**:
+`npm run test:browser` boots the app in Chromium for **99 end-to-end checks**:
 editing, dragging, formatting, line labels, collapsing, undo, version history,
 opening and saving files, drag-and-drop, talk mode, timings, the scripture
 index, the printable outline, space-to-pan, the node handles, the rehearsal

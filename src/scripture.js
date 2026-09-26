@@ -210,8 +210,13 @@ export function segmentLine(line) {
  * The shape of the address around it is not something this project can verify,
  * so both templates are editable. `{bible}` and `{locale}` are filled in.
  */
-export const JW_APP_TEMPLATE = 'jwlibrary:///finder?bible={bible}&wtlocale={locale}&pub=nwtsty';
+// The app is given no language: it opens the verse in the Bible it is already
+// set to, so a Korean reader gets the Korean Bible without choosing anything.
+export const JW_APP_TEMPLATE = 'jwlibrary:///finder?bible={bible}&pub=nwtsty';
 export const JW_WEB_TEMPLATE = 'https://www.jw.org/finder?bible={bible}&wtlocale={locale}&pub=nwtsty';
+// The way through to jw.org when the app may not be there. It leaves the
+// language to the site too, as the app does, rather than asking for one.
+export const JW_WEB_FALLBACK_TEMPLATE = 'https://www.jw.org/finder?bible={bible}&pub=nwtsty';
 
 /** Watchtower language codes, as used by `wtlocale`. */
 export const JW_LOCALES = [

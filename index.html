@@ -114,7 +114,7 @@
             <p class="talk-sub" id="timer-note">Counts up while you practise, against the time you have.</p>
           </section>
 
-          <section class="talk-block">
+          <section class="talk-block talk-part">
             <h3 class="talk-heading">Selected part</h3>
             <div id="talk-selection" class="talk-selection">Select a node on the map.</div>
             <label class="talk-field">
@@ -124,11 +124,11 @@
             </label>
             <p class="talk-sub" id="talk-rollup"></p>
             <label class="talk-label" for="talk-note">Speaker notes</label>
-            <textarea id="talk-note" rows="4" placeholder="What you actually want to say here…" disabled></textarea>
+            <textarea id="talk-note" rows="8" placeholder="What you actually want to say here…" disabled></textarea>
           </section>
 
-          <section class="talk-block">
-            <h3 class="talk-heading">Scriptures <span class="talk-count" id="talk-ref-count"></span></h3>
+          <details class="talk-block talk-refs" id="talk-refs-block">
+            <summary class="talk-heading">Scriptures <span class="talk-count" id="talk-ref-count"></span></summary>
             <ul class="ref-list" id="talk-refs"></ul>
             <label class="talk-label" for="talk-link">Tapping a verse</label>
             <select id="talk-link"></select>
@@ -137,7 +137,7 @@
             <select id="talk-locale"></select>
             <input type="text" id="talk-locale-custom" placeholder="Language code, e.g. KO" hidden />
             <p class="talk-sub" id="verse-hint"></p>
-          </section>
+          </details>
 
           <button type="button" class="btn primary block" id="btn-print">Print / PDF outline</button>
         </div>
