@@ -218,6 +218,13 @@ export const JW_WEB_TEMPLATE = 'https://www.jw.org/finder?bible={bible}&wtlocale
 // language to the site too, as the app does, rather than asking for one.
 export const JW_WEB_FALLBACK_TEMPLATE = 'https://www.jw.org/finder?bible={bible}&pub=nwtsty';
 
+// The link JW Library itself writes when you share a verse. It is an ordinary
+// web address, and on a device with the app it may open straight in the app:
+// iOS asks "Open in JW Library?" every time a page uses the jwlibrary: scheme,
+// but not for a web address the app has claimed. Where the app has not claimed
+// it, the verse simply opens on jw.org. No language, as with the app link.
+export const JW_SHARE_TEMPLATE = 'https://www.jw.org/finder?srcid=jwlshare&prefer=lang&bible={bible}&pub=nwtsty';
+
 /** Watchtower language codes, as used by `wtlocale`. */
 export const JW_LOCALES = [
   { id: 'E', name: 'English' },
@@ -239,6 +246,7 @@ export const JW_LOCALES = [
  */
 export const VERSE_ACTIONS = [
   { id: 'jwlibrary', name: 'Open in JW Library', template: JW_APP_TEMPLATE, app: true },
+  { id: 'jwshare', name: 'Open in JW Library, without asking (try it)', template: JW_SHARE_TEMPLATE, app: false },
   { id: 'jworg', name: 'Open jw.org in a new tab', template: JW_WEB_TEMPLATE, app: false },
   { id: 'custom', name: 'Custom link…', template: '', app: false },
   { id: 'none', name: 'Do nothing', template: null, app: false },

@@ -37,7 +37,7 @@ server on, host it — see [Putting it on the web](#putting-it-on-the-web).
 
 ```bash
 npm test               # 105 unit tests: parser, model, layout, scripture, timings, files
-npm run test:browser   # 99 end-to-end checks in Chromium (needs playwright)
+npm run test:browser   # 101 end-to-end checks in Chromium (needs playwright)
 ```
 
 ## Generating a map
@@ -210,6 +210,13 @@ so 시편 34:18 becomes `19034018`, and a range becomes a pair — and are hande
 the app as `jwlibrary:///finder?bible=…`. No language is sent: JW Library
 opens the verse in whichever Bible it is already set to.
 
+On an iPad or iPhone, Safari asks *"Open in JW Library?"* every time a page
+uses that kind of link; a website cannot turn the question off. **Open in JW
+Library, without asking** uses the ordinary jw.org address JW Library itself
+writes when you share a verse instead. Where the device lets the app take that
+address the verse opens there with no question, and otherwise it opens on
+jw.org.
+
 A browser is never told whether an app took a link like that, so the handoff
 always comes with a way through to **jw.org** in the same tap. Where JW Library
 is not installed — a Mac, for instance — switch *Tapping a verse* to **Open
@@ -299,7 +306,7 @@ storage — including the invariants that nodes never overlap, that siblings ali
 only with each other, that regenerating preserves formatting, and that a `.json`
 file round-trips everything an outline cannot carry.
 
-`npm run test:browser` boots the app in Chromium for **99 end-to-end checks**:
+`npm run test:browser` boots the app in Chromium for **101 end-to-end checks**:
 editing, dragging, formatting, line labels, collapsing, undo, version history,
 opening and saving files, drag-and-drop, talk mode, timings, the scripture
 index, the printable outline, space-to-pan, the node handles, the rehearsal
