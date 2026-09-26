@@ -583,6 +583,11 @@ try {
     window.dispatchEvent(event);
     return event.defaultPrevented;
   });
+  check('verses open through the link JW Library shares by default',
+    await page.evaluate(() => document.getElementById('talk-link').value) === 'jwshare');
+  // The rest of this block is the app-link option, which asks first on iOS.
+  await page.selectOption('#talk-link', 'jwlibrary');
+  await page.waitForTimeout(200);
   // The app opens in the Bible it is already set to, so no language is asked
   // for, and none is put in the address.
   check('JW Library offers no language to choose', await page.evaluate(() =>
@@ -670,11 +675,16 @@ try {
       const rect = cite.getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     }, words);
-    const opened = () => pad.evaluate(() => window.mindmapper.lastVerseLink?.app ?? null);
+    // The default opens JW Library's share link in a new tab; the stub records
+    // the address rather than opening anything.
+    await pad.evaluate(() => {
+      window.open = (url) => { window.openedUrl = url; return null; };
+    });
+    const opened = () => pad.evaluate(() => window.openedUrl ?? null);
     // Before each tap: forget the last link, and put the floating toolbar of
     // the selected card away, since it is free to sit over a neighbour.
     const clear = () => pad.evaluate(() => {
-      window.mindmapper.lastVerseLink = null;
+      window.openedUrl = null;
       document.getElementById('node-toolbar').hidden = true;
     });
 
@@ -703,8 +713,9 @@ try {
     spot = await centre('시편');
     await pad.touchscreen.tap(spot.x, spot.y);
     await pad.waitForTimeout(400);
-    check('a finger tap on a reference opens it',
-      (await opened())?.includes('bible=19034018'), String(await opened()));
+    check('a finger tap on a reference opens it in JW Library',
+      (await opened())?.startsWith('https://www.jw.org/finder?srcid=jwlshare')
+      && (await opened()).includes('bible=19034018'), String(await opened()));
 
     // A fingertip is wider than a line of text, so a little off still counts.
     await clear();
