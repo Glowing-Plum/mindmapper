@@ -629,6 +629,19 @@ try {
   check('the jw.org option opens the verse in a tab',
     webTab.url().startsWith('https://www.jw.org/finder?bible=01023002'), webTab.url());
   await webTab.close();
+  // The share-style link is a plain web address, so iOS can hand it to the app
+  // without asking. It carries no language either.
+  await page.selectOption('#talk-link', 'jwshare');
+  await page.waitForTimeout(200);
+  check('the no-prompt option offers no language',
+    await page.evaluate(() => document.getElementById('talk-locale').hidden));
+  const [shareTab] = await Promise.all([
+    page.context().waitForEvent('page'),
+    page.click('.node .scripture'),
+  ]);
+  check('the no-prompt option opens the link JW Library shares',
+    shareTab.url() === 'https://www.jw.org/finder?srcid=jwlshare&prefer=lang&bible=01023002&pub=nwtsty', shareTab.url());
+  await shareTab.close();
   await page.selectOption('#talk-link', 'jwlibrary');
   await page.waitForTimeout(200);
 

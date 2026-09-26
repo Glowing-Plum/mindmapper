@@ -450,10 +450,12 @@ function syncScriptureSettings() {
   el('talk-locale-label').hidden = !usesLocale;
   ui.localeCustom.hidden = !usesLocale || state.locale !== 'custom';
   ui.verseHint.textContent = state.verseAction === 'jwlibrary'
-    ? 'Needs JW Library installed — iPad, iPhone, Android or Windows. Elsewhere, use the jw.org option.'
-    : state.verseAction === 'custom'
-      ? 'Use {ref} for the reference, or {bible} and {locale} for the jw.org numbering.'
-      : '';
+    ? 'Needs JW Library installed — iPad, iPhone, Android or Windows. Elsewhere, use the jw.org option. On an iPad or iPhone, Safari asks each time before opening the app.'
+    : state.verseAction === 'jwshare'
+      ? 'Uses the same web link JW Library shares. Where the device lets the app take it, the verse opens there without the question; otherwise it opens on jw.org.'
+      : state.verseAction === 'custom'
+        ? 'Use {ref} for the reference, or {bible} and {locale} for the jw.org numbering.'
+        : '';
 }
 
 function positionToolbar() {
