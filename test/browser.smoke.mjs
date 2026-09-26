@@ -496,6 +496,17 @@ try {
   await page.waitForTimeout(400);
 
   check('talk mode marks scripture on the map', (await page.locator('.scripture').count()) === 3);
+  // The scripture list starts folded, like the shortcuts, and the speaker
+  // notes have the room it would have taken.
+  check('the scripture list starts collapsed', await page.evaluate(() =>
+    !document.getElementById('talk-refs-block').open
+    && !document.getElementById('talk-refs').checkVisibility()));
+  check('the speaker notes take the space', await page.evaluate(() =>
+    document.getElementById('talk-note').getBoundingClientRect().height >= 180));
+  await page.click('#talk-refs-block > summary');
+  check('the scripture list opens', await page.evaluate(() =>
+    document.getElementById('talk-refs-block').open
+    && document.getElementById('talk-refs').checkVisibility()));
   check('the scripture index lists them as written',
     (await page.locator('.ref-row').count()) === 3
     && (await page.textContent('.ref-row .ref-cite')) === 'Genesis 23:2');
@@ -572,13 +583,16 @@ try {
     window.dispatchEvent(event);
     return event.defaultPrevented;
   });
-  await page.selectOption('#talk-locale', 'KO');
-  await page.waitForTimeout(200);
+  // The app opens in the Bible it is already set to, so no language is asked
+  // for, and none is put in the address.
+  check('JW Library offers no language to choose', await page.evaluate(() =>
+    document.getElementById('talk-locale').hidden
+    && document.getElementById('talk-locale-label').hidden));
   await page.click('.node .scripture');
   await page.waitForTimeout(400);
   const handoff = await page.evaluate(() => window.mindmapper.lastVerseLink?.app ?? null);
-  check('a verse is handed to JW Library, numbered and localised',
-    handoff === 'jwlibrary:///finder?bible=01023002&wtlocale=KO&pub=nwtsty', String(handoff));
+  check('a verse is handed to JW Library in the language it already uses',
+    handoff === 'jwlibrary:///finder?bible=01023002&pub=nwtsty', String(handoff));
   // Handing a verse to the app must not trip the unsaved-changes prompt: it
   // is not the page being left.
   const prompts = await page.evaluate(() => {
@@ -606,6 +620,8 @@ try {
     route.fulfill({ contentType: 'text/html', body: '<title>stub</title>' }));
   await page.selectOption('#talk-link', 'jworg');
   await page.waitForTimeout(200);
+  check('jw.org still offers a language',
+    await page.evaluate(() => !document.getElementById('talk-locale').hidden));
   const [webTab] = await Promise.all([
     page.context().waitForEvent('page'),
     page.click('.node .scripture'),
@@ -870,6 +886,28 @@ try {
       await page.evaluate(() => JSON.stringify(document.querySelector('.inline-editor')?.value ?? null)));
     await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
+  }
+
+  // Hiding the side panel must leave the zoom alone: the map stays the size
+  // you set it, and where it was on screen.
+  {
+    await page.evaluate(() => window.mindmapper.viewport.setZoom(1.7));
+    await page.waitForTimeout(100);
+    const where = () => page.evaluate(() => {
+      const box = document.querySelector('.node rect').getBoundingClientRect();
+      return { k: window.mindmapper.viewport.state.k, x: Math.round(box.left), y: Math.round(box.top) };
+    });
+    const before = await where();
+    await page.click('#btn-toggle-sidebar');
+    await page.waitForTimeout(400);
+    const hidden = await where();
+    await page.click('#btn-show-sidebar');
+    await page.waitForTimeout(400);
+    const shown = await where();
+    const same = (a, b) => Math.abs(a.k - b.k) < 1e-9 && Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1;
+    check('hiding and showing the panel keeps the zoom and the map in place',
+      same(before, hidden) && same(before, shown),
+      JSON.stringify({ before, hidden, shown }));
   }
 
   check('no console errors', errors.length === 0, errors.join(' | '));

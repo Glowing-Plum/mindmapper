@@ -948,6 +948,30 @@ dialog menu { gap: 8px; align-items: center; justify-content: space-between; }
 
 .talk-count { color: var(--text-faint); font-weight: 500; }
 
+/* The scripture list folds away like the shortcuts do, closed to begin with,
+   and the speaker notes take the room it leaves. */
+/* Laid out as a plain block: older Safari will not make a <details> a flex
+   box, so the spacing is margins rather than the gap the other blocks use. */
+.talk-refs { display: block; }
+.talk-refs > :not(summary) { display: block; width: 100%; margin-top: 8px; }
+.talk-refs > .ref-list { display: flex; }
+.talk-refs > [hidden] { display: none; }
+.talk-refs > summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+.talk-refs > summary::marker { color: var(--text-faint); }
+
+.talk-part {
+  flex: 1 0 auto;
+  min-height: 0;
+}
+
+#talk-note {
+  flex: 1 0 auto;
+  min-height: 180px;
+}
+
 .talk-field {
   display: flex;
   align-items: center;

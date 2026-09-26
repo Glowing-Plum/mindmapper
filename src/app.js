@@ -14,7 +14,7 @@ import {
 } from './storage.js';
 import { copyText, download, markdownFor, slugify, toPngBlob, toSvgString } from './exporters.js';
 import {
-  JW_LOCALES, JW_WEB_TEMPLATE as JW_WEB, VERSE_ACTIONS, collectReferences, findReferences, jwUrl,
+  JW_LOCALES, JW_WEB_FALLBACK_TEMPLATE as JW_WEB_FALLBACK, VERSE_ACTIONS, collectReferences, findReferences, jwUrl,
 } from './scripture.js';
 import { formatClock, formatMinutes, rollup, rollupAll, summarise } from './timing.js';
 import {
@@ -223,7 +223,7 @@ function openReference(reference, { node = null, label = null } = {}) {
 
   // The handoff itself. If nothing is registered for the scheme the browser
   // stays put, so the fallback is offered straight away rather than guessed at.
-  const web = jwUrl(reference, { template: JW_WEB, locale });
+  const web = jwUrl(reference, { template: JW_WEB_FALLBACK });
   lastVerseLink = { reference: reference.canonical, app: url, web };
   launchApp(url);
   showToast(`Opening ${label ?? reference.text} in JW Library.`, 7000,
@@ -442,7 +442,9 @@ function buildLinkOptions() {
 
 /** Only the settings that apply to the chosen way of opening a verse. */
 function syncScriptureSettings() {
-  const usesLocale = state.verseAction === 'jwlibrary' || state.verseAction === 'jworg';
+  // JW Library opens in whatever Bible it is already set to, so only jw.org
+  // needs telling which language to show.
+  const usesLocale = state.verseAction === 'jworg';
   ui.talkLinkCustom.hidden = state.verseAction !== 'custom';
   ui.locale.hidden = !usesLocale;
   el('talk-locale-label').hidden = !usesLocale;
@@ -1429,10 +1431,25 @@ function fitMap({ animate = true } = {}) {
   });
 }
 
-function setSidebar(visible, { refit = true } = {}) {
+/**
+ * Shows or hides the side panel without moving the map.
+ *
+ * Where the panel sits beside the canvas, hiding it widens the canvas and
+ * shifts its left edge. Refitting then would change the zoom you chose, so
+ * instead the view is panned by exactly that shift: every card stays where it
+ * was on screen, at the same size. Where the panel floats over the canvas the
+ * canvas does not change at all, and neither does the view.
+ */
+function setSidebar(visible) {
+  const before = ui.canvas.getBoundingClientRect();
   ui.sidebar.hidden = !visible;
   el('btn-show-sidebar').hidden = visible;
-  if (refit && layout) requestAnimationFrame(() => fitMap());
+  const after = ui.canvas.getBoundingClientRect(); // forces the new layout now
+  const dx = before.left - after.left;
+  const dy = before.top - after.top;
+  if (dx || dy) viewport.panBy(dx, dy);
+  positionToolbar();
+  editor?.reposition();
 }
 
 function showToast(message, duration = 2600, link = null) {
@@ -1796,7 +1813,7 @@ function boot() {
   bindChrome();
   applyTheme(saved?.theme ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
   state.mode = saved?.mode === 'right' ? 'right' : 'both';
-  setSidebar(window.innerWidth >= NARROW, { refit: false });
+  setSidebar(window.innerWidth >= NARROW);
   ui.outline.value = toOutline(doc.root);
   setFile(saved?.file ?? { name: '', dirty: false });
 

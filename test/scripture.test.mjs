@@ -85,11 +85,11 @@ test('a whole chapter has no verse', () => {
   assert.equal(bibleNumber(findReferences('Romans 8')[0]), '45008000');
 });
 
-test('builds a JW Library address for a reference', () => {
+test('builds a JW Library address that leaves the language to the app', () => {
   const [reference] = findReferences('시편 34:18');
   assert.equal(
     jwUrl(reference, { template: JW_APP_TEMPLATE, locale: 'KO' }),
-    'jwlibrary:///finder?bible=19034018&wtlocale=KO&pub=nwtsty',
+    'jwlibrary:///finder?bible=19034018&pub=nwtsty',
   );
   assert.equal(
     jwUrl(reference, { template: JW_WEB_TEMPLATE, locale: 'E' }),
