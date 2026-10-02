@@ -8,6 +8,7 @@ import { createRenderer } from './render.js';
 import { createViewport } from './viewport.js';
 import { createInlineEditor } from './editor.js';
 import { BRANCH_COLORS, HIGHLIGHTS } from './palette.js';
+import { EMOJIS, leadingEmoji, withEmoji } from './emoji.js';
 import { SAMPLES, DEFAULT_SAMPLE } from './samples.js';
 import {
   clearState, clearVersions, getVersion, listVersions, loadState, pushVersion, relativeTime, saveState,
@@ -28,6 +29,7 @@ const ui = {
   sidebar: el('sidebar'),
   toolbar: el('node-toolbar'),
   swatches: el('swatches'),
+  emojiPicker: el('emoji-picker'),
   highlights: el('highlights'),
   toast: el('toast'),
   zoomLevel: el('btn-zoom-reset'),
@@ -104,6 +106,7 @@ function positionToolbar() {
   const box = state.selectedId ? layout?.byId.get(state.selectedId) : null;
   if (!box || state.draggingId || editor?.isOpen()) {
     ui.toolbar.hidden = true;
+    closeEmojiPicker();
     return;
   }
   const wrapRect = ui.wrap.getBoundingClientRect();
@@ -112,7 +115,10 @@ function positionToolbar() {
   const x = clamp(anchor.x - wrapRect.left, halfWidth + 8, wrapRect.width - halfWidth - 8);
   const y = anchor.y - wrapRect.top - 12;
   ui.toolbar.hidden = y < 50 || y > wrapRect.height;
-  if (ui.toolbar.hidden) return;
+  if (ui.toolbar.hidden) {
+    closeEmojiPicker();
+    return;
+  }
   ui.toolbar.style.left = `${x}px`;
   ui.toolbar.style.top = `${y}px`;
   syncToolbarState(doc.get(state.selectedId), box);
@@ -127,6 +133,10 @@ function syncToolbarState(node, box) {
   }
   for (const swatch of ui.swatches.children) {
     swatch.setAttribute('aria-pressed', String(Number(swatch.dataset.index) === node.colorIndex));
+  }
+  const current = leadingEmoji(node.text);
+  for (const button of ui.emojiPicker.children) {
+    button.setAttribute('aria-pressed', String((button.dataset.emoji || null) === current));
   }
   const labelButton = ui.toolbar.querySelector('[data-act="label"]');
   labelButton.disabled = box.isRoot;
@@ -787,6 +797,12 @@ document.addEventListener('keydown', (event) => {
     return;
   }
 
+  // Focus is usually on the picker's own button, so this comes before the canvas check.
+  if (event.key === 'Escape' && !ui.emojiPicker.hidden) {
+    closeEmojiPicker();
+    return;
+  }
+
   // Canvas shortcuts only apply when the canvas has focus (or nothing does):
   // Tab and the printable keys must still reach the toolbar and the panel.
   const onCanvas = target === document.body || ui.canvas.contains(target);
@@ -964,6 +980,52 @@ function buildSwatches() {
   }
 }
 
+function buildEmojiPicker() {
+  const none = document.createElement('button');
+  none.type = 'button';
+  none.className = 'emoji-option is-none';
+  none.dataset.emoji = '';
+  none.title = 'No emoji';
+  none.setAttribute('aria-label', 'Remove emoji');
+  ui.emojiPicker.append(none);
+
+  for (const emoji of EMOJIS) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'emoji-option';
+    button.dataset.emoji = emoji;
+    button.textContent = emoji;
+    button.setAttribute('aria-label', emoji);
+    ui.emojiPicker.append(button);
+  }
+
+  ui.emojiPicker.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-emoji]');
+    if (!button || !state.selectedId) return;
+    const node = doc.get(state.selectedId);
+    if (node) doc.setText(node.id, withEmoji(node.text, button.dataset.emoji || null));
+    closeEmojiPicker();
+    refresh();
+  });
+}
+
+function toggleEmojiPicker() {
+  const open = ui.emojiPicker.hidden;
+  ui.emojiPicker.hidden = !open;
+  ui.toolbar.querySelector('[data-act="emoji"]').setAttribute('aria-expanded', String(open));
+  if (!open) return;
+  // The canvas clips its children, so drop below the toolbar when there is no room above.
+  ui.emojiPicker.classList.remove('below');
+  const top = ui.toolbar.getBoundingClientRect().top - ui.wrap.getBoundingClientRect().top;
+  ui.emojiPicker.classList.toggle('below', top < ui.emojiPicker.offsetHeight + 12);
+}
+
+function closeEmojiPicker() {
+  if (ui.emojiPicker.hidden) return;
+  ui.emojiPicker.hidden = true;
+  ui.toolbar.querySelector('[data-act="emoji"]').setAttribute('aria-expanded', 'false');
+}
+
 function applyHighlight(id) {
   if (!state.selectedId) return;
   const node = doc.get(state.selectedId);
@@ -1121,6 +1183,7 @@ function bindChrome() {
   });
   document.addEventListener('click', (event) => {
     if (!menu.contains(event.target)) closeMenu();
+    if (!ui.toolbar.contains(event.target)) closeEmojiPicker();
   });
 
   ui.toolbar.addEventListener('click', (event) => {
@@ -1130,6 +1193,7 @@ function bindChrome() {
     else if (act === 'sibling') addSibling();
     else if (act === 'delete') deleteSelected();
     else if (act === 'label') startLabelEdit();
+    else if (act === 'emoji') toggleEmojiPicker();
     else if (act === 'bold' || act === 'italic') {
       doc.toggleFormat(state.selectedId, act);
       refresh({ syncOutline: false });
@@ -1162,6 +1226,7 @@ function bindChrome() {
 function boot() {
   doc.onChange(markDirty);
   buildSwatches();
+  buildEmojiPicker();
   buildSampleSelect();
   bindChrome();
   applyTheme(saved?.theme ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));

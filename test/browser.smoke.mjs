@@ -140,6 +140,16 @@ try {
   check('bold, italic and highlight apply', formatting.bold && formatting.italic && formatting.highlighted,
     JSON.stringify(formatting));
 
+  // Emoji: picking one prefixes the text, picking it again removes it.
+  await page.click('.node-toolbar [data-act="emoji"]');
+  await page.click('#emoji-picker [data-emoji="⭐"]');
+  await page.waitForTimeout(300);
+  const starred = /- ⭐ Build\n/.test(await outline());
+  await page.click('.node-toolbar [data-act="emoji"]');
+  await page.click('#emoji-picker [data-emoji="⭐"]');
+  await page.waitForTimeout(300);
+  check('an emoji can be added and removed', starred && /- Build\n/.test(await outline()));
+
   // Labelling a connector.
   await clickNode('Pricing');
   await page.click('.node-toolbar [data-act="label"]');

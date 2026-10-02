@@ -112,6 +112,10 @@ The toolbar above a selected node carries **bold**, *italic*, a text highlight
 (four tints, click the active one again to clear it) and the branch colour —
 click the active swatch again to go back to inheriting from the branch.
 
+The smiley button opens an emoji picker. The chosen emoji goes in front of the
+node's text, so it shows up in the outline and every export too; picking
+another swaps it, and picking the same one again removes it.
+
 Any connector can carry a label: select the node below it and press **Label
 line**, or double-click the line itself. The column shifts outward to make room,
 so a labelled line never runs short of space.

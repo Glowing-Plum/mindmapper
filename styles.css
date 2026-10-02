@@ -689,6 +689,52 @@ kbd {
 
 .tool:disabled { opacity: 0.35; cursor: default; }
 
+.tool.fmt[data-act='emoji'][aria-expanded='true'] { background: var(--accent-soft); }
+
+/* Opens above the toolbar so it never covers the node being decorated. */
+.emoji-picker {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+}
+
+.emoji-picker[hidden] { display: none; }
+.emoji-picker.below { bottom: auto; top: calc(100% + 6px); }
+
+.emoji-option {
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.emoji-option:hover { background: var(--surface-2); }
+.emoji-option[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent); }
+
+.emoji-option.is-none { position: relative; }
+
+.emoji-option.is-none::after {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: linear-gradient(to bottom right, transparent 45%, var(--danger) 45%, var(--danger) 55%, transparent 55%);
+}
+
 .swatches.highlights .swatch {
   border-radius: 4px;
   border: 1px solid var(--border-strong);
@@ -796,6 +842,8 @@ dialog menu { gap: 8px; align-items: center; justify-content: space-between; }
   }
 
   .tool.fmt { width: 36px; }
+
+  .emoji-option { width: 38px; height: 38px; font-size: 20px; }
 
   .swatch {
     width: 22px;
