@@ -32,3 +32,76 @@ export function withEmoji(text = '', emoji) {
   if (!emoji || emoji === current) return current && rest ? rest : text;
   return rest ? `${emoji} ${rest}` : emoji;
 }
+
+// ------------------------------------------------------------------ search
+
+let indexPromise = null;
+
+/** The whole emoji set with its English and Korean names, loaded on first use. */
+export function loadEmojiIndex() {
+  indexPromise ??= import('./emoji-data.js').then(({ EMOJI_DATA }) => parseEmojiData(EMOJI_DATA));
+  return indexPromise;
+}
+
+// Words Unicode doesn't give these, but a talk on the Bible reaches for.
+const EXTRA_KEYWORDS = {
+  '📖': 'bible scripture verse 성경 성구 말씀',
+  '📜': 'scroll scripture 성경 두루마리',
+  '🙏': 'prayer 기도',
+  '🕊️': 'peace spirit holy 평화 성령',
+  '❤️': 'love 사랑',
+  '🌍': 'earth paradise 땅 낙원',
+  '🌳': 'paradise 낙원',
+  '👑': 'kingdom king 왕국 왕',
+  '🗣️': 'preach speak talk 전파 연설 말하기',
+  '🤝': 'friend 친구 벗',
+  '💡': 'idea point 요점 생각',
+  '⏱️': 'time timer 시간',
+};
+
+export function parseEmojiData(data) {
+  return data.split('\n').map((line) => {
+    const [emoji, name, enKeywords, koName, koKeywords] = line.split('\t');
+    const keywords = `${enKeywords} ${EXTRA_KEYWORDS[emoji] ?? ''}`;
+    return {
+      emoji,
+      name,
+      koName,
+      names: [name.toLowerCase(), koName],
+      haystack: [name, keywords, koName, koKeywords].join(' ').toLowerCase(),
+      keywords: new Set(`${keywords} ${koKeywords}`.toLowerCase().split(' ')),
+      extra: (EXTRA_KEYWORDS[emoji] ?? '').split(' '),
+    };
+  });
+}
+
+/**
+ * The emoji that match what was typed, best first: every word has to appear
+ * somewhere in the English or Korean names and keywords. An emoji typed or
+ * pasted in, say from the iPad's emoji keyboard, comes back as itself.
+ */
+export function searchEmoji(index, query, limit = 60) {
+  const typed = query.trim();
+  const own = splitEmoji(typed).emoji;
+  if (own) {
+    const known = index.find((entry) => entry.emoji === own || entry.emoji.replace(/\uFE0F/g, '') === own);
+    return [known ?? { emoji: own, name: own, koName: '' }];
+  }
+  const q = typed.toLowerCase();
+  if (!q) return [];
+  const words = q.split(/\s+/);
+  const rank = (entry) => {
+    if (entry.names.includes(q)) return 0;
+    if (entry.extra.includes(q) || entry.names.some((name) => name.startsWith(q) || name.endsWith(` ${q}`))) return 1;
+    if (entry.names.some((name) => name.includes(` ${q}`))) return 2;
+    if (words.every((word) => entry.keywords.has(word))) return 3;
+    if (entry.names.some((name) => name.includes(q))) return 4;
+    return 5;
+  };
+  return index
+    .filter((entry) => words.every((word) => entry.haystack.includes(word)))
+    .map((entry, order) => ({ entry, order, score: rank(entry) }))
+    .sort((a, b) => a.score - b.score || a.order - b.order)
+    .slice(0, limit)
+    .map(({ entry }) => entry);
+}

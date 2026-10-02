@@ -80,6 +80,7 @@ export function createInlineEditor(host, { onCommit, onCancel, onChord, onResize
       lineHeight: `${target.lineHeight * k}px`,
       fontWeight: String(target.fontWeight),
       fontStyle: target.italic ? 'italic' : 'normal',
+      textDecoration: target.underline ? 'underline' : 'none',
       fontFamily: FONT_STACK,
       padding: `${Math.max(0, padY) * k}px ${target.padX * k}px`,
       borderRadius: `${(target.radius ?? 6) * k}px`,
@@ -133,7 +134,7 @@ export function createInlineEditor(host, { onCommit, onCancel, onChord, onResize
     }
 
     const mod = event.ctrlKey || event.metaKey;
-    if (mod && ['b', 'i', 'h'].includes(event.key.toLowerCase())) {
+    if (mod && ['b', 'i', 'u', 'h'].includes(event.key.toLowerCase())) {
       // Formatting shortcuts still apply to the node being edited.
       event.preventDefault();
       onChord?.(event.key.toLowerCase(), current?.target ?? null);

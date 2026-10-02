@@ -17,6 +17,7 @@ const SHELL = [
   'src/app.js',
   'src/editor.js',
   'src/emoji.js',
+  'src/emoji-data.js',
   'src/exporters.js',
   'src/files.js',
   'src/layout.js',

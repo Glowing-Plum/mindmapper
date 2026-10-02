@@ -150,7 +150,7 @@
             <dt>Arrows</dt><dd>Move selection</dd>
             <dt>Alt + &uarr; / &darr;</dt><dd>Reorder</dd>
             <dt>Alt + &larr; / &rarr;</dt><dd>Outdent / indent</dd>
-            <dt>Ctrl + B / I</dt><dd>Bold / italic</dd>
+            <dt>Ctrl + B / I / U</dt><dd>Bold / italic / underline</dd>
             <dt>Ctrl + H</dt><dd>Cycle highlight</dd>
             <dt>Ctrl + L</dt><dd>Label the incoming line</dd>
             <dt>Hold Space + drag</dt><dd>Pan the canvas</dd>
@@ -173,6 +173,7 @@
         <div class="node-toolbar" id="node-toolbar" hidden>
           <button type="button" class="tool fmt" data-act="bold" title="Bold (Ctrl+B)" aria-label="Bold"><b>B</b></button>
           <button type="button" class="tool fmt" data-act="italic" title="Italic (Ctrl+I)" aria-label="Italic"><i>I</i></button>
+          <button type="button" class="tool fmt" data-act="underline" title="Underline (Ctrl+U)" aria-label="Underline"><u>U</u></button>
           <div class="swatches highlights" id="highlights" role="group" aria-label="Text highlight"></div>
           <span class="divider"></span>
           <div class="swatches" id="swatches" role="group" aria-label="Branch colour"></div>
@@ -239,7 +240,7 @@
           <li>Drag a node onto another to re-parent it.</li>
           <li><kbd>.</kbd> collapses or expands; the bubble shows how many nodes are tucked away.</li>
           <li>Hold <kbd>Space</kbd> and drag to pan from anywhere, even over a node.</li>
-          <li><kbd>Ctrl</kbd> + <kbd>B</kbd>/<kbd>I</kbd> sets bold and italic, <kbd>Ctrl</kbd> + <kbd>H</kbd> cycles the highlight.</li>
+          <li><kbd>Ctrl</kbd> + <kbd>B</kbd>/<kbd>I</kbd>/<kbd>U</kbd> sets bold, italic and underline, <kbd>Ctrl</kbd> + <kbd>H</kbd> cycles the highlight.</li>
           <li><kbd>Ctrl</kbd> + <kbd>L</kbd>, or a double-click on a line, labels that connector.</li>
         </ul>
         <h3>Keeping your work</h3>

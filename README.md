@@ -37,7 +37,7 @@ server on, host it — see [Putting it on the web](#putting-it-on-the-web).
 
 ```bash
 npm test               # 105 unit tests: parser, model, layout, scripture, timings, files
-npm run test:browser   # 109 end-to-end checks in Chromium (needs playwright)
+npm run test:browser   # 117 end-to-end checks in Chromium (needs playwright)
 ```
 
 ## Generating a map
@@ -73,7 +73,7 @@ canvas instead.
 | Arrow keys | Move the selection along the branches |
 | <kbd>Alt</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> | Reorder among siblings |
 | <kbd>Alt</kbd> + <kbd>←</kbd>/<kbd>→</kbd> | Outdent / indent |
-| <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>B</kbd> / <kbd>I</kbd> | Bold / italic |
+| <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>B</kbd> / <kbd>I</kbd> / <kbd>U</kbd> | Bold / italic / underline |
 | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>H</kbd> | Cycle the text highlight |
 | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>L</kbd> | Label the line coming into this node |
 | Hold <kbd>Space</kbd> + drag | Pan from anywhere, even over a node |
@@ -112,7 +112,7 @@ it.
 
 ### Formatting and line labels
 
-The toolbar above a selected node carries **bold**, *italic*, a text highlight
+The toolbar above a selected node carries **bold**, *italic*, <u>underline</u>, a text highlight
 (four tints, click the active one again to clear it) and the branch colour —
 click the active swatch again to go back to inheriting from the branch.
 
@@ -122,6 +122,13 @@ card's text, so it shows in the outline and every export too. A card wears one
 at a time: pick another to swap it, pick the same one again (or **Remove
 emoji**) to take it off. The arrow keys move around the picker and Escape
 closes it.
+
+For anything else, type in the picker's search box. It searches all of
+Unicode's emoji by their English and Korean names (`heart`, `사랑`, `성경`), and
+an emoji typed in from the iPad's emoji keyboard is used as it is. Enter
+picks the first match. The names come from Unicode's CLDR data, built into
+`src/emoji-data.js` by `scripts/build-emoji.mjs`, and load the first time the
+picker opens.
 
 Any connector can carry a label: select the node below it and press **Label
 line**, or double-click the line itself. The column shifts outward to make room,
@@ -312,7 +319,7 @@ storage — including the invariants that nodes never overlap, that siblings ali
 only with each other, that regenerating preserves formatting, and that a `.json`
 file round-trips everything an outline cannot carry.
 
-`npm run test:browser` boots the app in Chromium for **109 end-to-end checks**:
+`npm run test:browser` boots the app in Chromium for **117 end-to-end checks**:
 editing, dragging, formatting, line labels, collapsing, undo, version history,
 opening and saving files, drag-and-drop, talk mode, timings, the scripture
 index, the printable outline, space-to-pan, the node handles, the rehearsal

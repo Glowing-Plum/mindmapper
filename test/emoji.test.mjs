@@ -31,3 +31,28 @@ test('never leaves a card blank', () => {
   assert.equal(withEmoji('⭐', '📖'), '📖');
   assert.equal(withEmoji('', '📖'), '📖');
 });
+
+test('searches every emoji by English or Korean name and keyword', async () => {
+  const { loadEmojiIndex, searchEmoji } = await import('../src/emoji.js');
+  const index = await loadEmojiIndex();
+  assert.ok(index.length > 1800, `only ${index.length} emoji`);
+  const first = (query) => searchEmoji(index, query)[0]?.emoji;
+  assert.equal(first('red heart'), '❤️');
+  assert.equal(first('thumbs up'), '👍');
+  assert.equal(first('dove'), '🕊️');
+  assert.equal(first('사과'), '🍎');
+  assert.ok(searchEmoji(index, '하트').some((entry) => entry.emoji === '❤️'));
+  assert.equal(first('성경'), '📖');
+  assert.ok(searchEmoji(index, 'book').some((entry) => entry.emoji === '📖'));
+  assert.ok(searchEmoji(index, 'korea').some((entry) => entry.emoji === '🇰🇷'));
+  assert.deepEqual(searchEmoji(index, 'zzzqqq'), []);
+  assert.deepEqual(searchEmoji(index, '  '), []);
+});
+
+test('an emoji typed into the search comes back as itself', async () => {
+  const { loadEmojiIndex, searchEmoji } = await import('../src/emoji.js');
+  const index = await loadEmojiIndex();
+  assert.equal(searchEmoji(index, '🦒')[0].emoji, '🦒');
+  assert.equal(searchEmoji(index, '❤')[0].emoji, '❤️');
+  assert.equal(searchEmoji(index, ' 🫶 ')[0].emoji, '🫶');
+});

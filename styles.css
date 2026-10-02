@@ -629,6 +629,7 @@ select:focus-visible,
 
 /* Opens below the toolbar, over the card, or above it near the map's foot. */
 .emoji-picker {
+  --emoji-cell: 32px;
   position: absolute;
   top: calc(100% + 6px);
   left: 50%;
@@ -647,11 +648,34 @@ select:focus-visible,
 
 .emoji-picker[hidden] { display: none; }
 .emoji-picker.is-above { top: auto; bottom: calc(100% + 6px); }
-.emoji-row { display: flex; flex-wrap: wrap; gap: 2px; }
+.emoji-row,
+.emoji-results {
+  display: grid;
+  grid-template-columns: repeat(10, var(--emoji-cell));
+  gap: 2px;
+}
+
+.emoji-row[hidden],
+.emoji-results[hidden] { display: none; }
+.emoji-results { max-height: calc(var(--emoji-cell) * 5 + 8px); overflow-y: auto; }
+.emoji-none { grid-column: 1 / -1; margin: 6px 4px; color: var(--text-soft); font-size: 12.5px; }
+
+.emoji-search {
+  font: inherit;
+  font-size: 13px;
+  margin-bottom: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.emoji-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 .emoji-choice {
-  width: 32px;
-  height: 32px;
+  width: var(--emoji-cell);
+  height: var(--emoji-cell);
   font-size: 18px;
   line-height: 1;
   padding: 0;
@@ -664,6 +688,8 @@ select:focus-visible,
 .emoji-choice:hover { background: var(--surface-2); }
 .emoji-choice[aria-pressed='true'] { box-shadow: inset 0 0 0 2px var(--text); }
 .emoji-choice:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (max-width: 480px) { .emoji-picker { --emoji-cell: 30px; } }
+
 .emoji-remove { align-self: flex-end; margin-top: 4px; color: var(--text-soft); }
 
 .tool.danger:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
@@ -904,7 +930,9 @@ dialog menu { gap: 8px; align-items: center; justify-content: space-between; }
   }
 
   .tool.fmt { width: 36px; }
-  .emoji-choice { width: 40px; height: 40px; font-size: 22px; }
+  .emoji-picker { --emoji-cell: 38px; }
+  .emoji-choice { font-size: 22px; }
+  .emoji-search { font-size: 16px; padding: 9px 10px; } /* 16px keeps iOS from zooming in */
 
   .swatch {
     width: 22px;
