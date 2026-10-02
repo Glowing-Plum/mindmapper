@@ -8,6 +8,7 @@ import { createRenderer } from './render.js';
 import { createViewport } from './viewport.js';
 import { createInlineEditor } from './editor.js';
 import { BRANCH_COLORS, HIGHLIGHTS } from './palette.js';
+import { EMOJI_GROUPS, splitEmoji, withEmoji } from './emoji.js';
 import { SAMPLES, DEFAULT_SAMPLE } from './samples.js';
 import {
   clearState, clearVersions, getVersion, listVersions, loadState, pushVersion, relativeTime, saveState,
@@ -33,6 +34,7 @@ const ui = {
   toolbar: el('node-toolbar'),
   swatches: el('swatches'),
   highlights: el('highlights'),
+  emojiPicker: el('emoji-picker'),
   toast: el('toast'),
   zoomLevel: el('btn-zoom-reset'),
   sampleSelect: el('sample-select'),
@@ -462,15 +464,20 @@ function positionToolbar() {
   const box = state.selectedId ? layout?.byId.get(state.selectedId) : null;
   if (!box || state.draggingId || editor?.isOpen()) {
     ui.toolbar.hidden = true;
+    closeEmojiPicker();
     return;
   }
+  if (ui.emojiPicker.dataset.for !== state.selectedId) closeEmojiPicker();
   const wrapRect = ui.wrap.getBoundingClientRect();
   const anchor = viewport.toScreen(box.cx, box.y);
   const halfWidth = ui.toolbar.offsetWidth / 2 || 180;
   const x = clamp(anchor.x - wrapRect.left, halfWidth + 8, wrapRect.width - halfWidth - 8);
   const y = anchor.y - wrapRect.top - 12;
   ui.toolbar.hidden = y < 50 || y > wrapRect.height;
-  if (ui.toolbar.hidden) return;
+  if (ui.toolbar.hidden) {
+    closeEmojiPicker();
+    return;
+  }
   ui.toolbar.classList.remove('is-away'); // a fresh selection always shows it
   ui.toolbar.style.left = `${x}px`;
   ui.toolbar.style.top = `${y}px`;
@@ -491,6 +498,44 @@ function syncToolbarState(node, box) {
   labelButton.disabled = box.isRoot;
   labelButton.textContent = node.edgeLabel ? 'Edit label' : 'Label line';
   ui.toolbar.querySelector('[data-act="delete"]').disabled = box.isRoot;
+  const { emoji } = splitEmoji(node.text);
+  ui.toolbar.querySelector('[data-act="emoji"]').textContent = emoji ?? '\u{1F642}';
+  for (const button of ui.emojiPicker.querySelectorAll('[data-emoji]')) {
+    if (button.dataset.emoji) button.setAttribute('aria-pressed', String(button.dataset.emoji === emoji));
+    else button.disabled = !emoji;
+  }
+}
+
+// ------------------------------------------------------------ emoji picker
+
+function openEmojiPicker() {
+  ui.emojiPicker.dataset.for = state.selectedId;
+  ui.emojiPicker.hidden = false;
+  ui.emojiPicker.classList.remove('is-above');
+  ui.toolbar.classList.remove('is-away');
+  ui.toolbar.querySelector('[data-act="emoji"]').setAttribute('aria-expanded', 'true');
+  // It opens below the toolbar, over the card; near the bottom of the map
+  // there is no room for that, so it opens above instead.
+  const wrapRect = ui.wrap.getBoundingClientRect();
+  if (ui.emojiPicker.getBoundingClientRect().bottom > wrapRect.bottom - 8) {
+    ui.emojiPicker.classList.add('is-above');
+  }
+  ui.emojiPicker.querySelector('[aria-pressed="true"], [data-emoji]:not([data-emoji=""])')?.focus();
+}
+
+function closeEmojiPicker() {
+  if (ui.emojiPicker.hidden) return;
+  ui.emojiPicker.hidden = true;
+  delete ui.emojiPicker.dataset.for;
+  ui.toolbar.querySelector('[data-act="emoji"]').setAttribute('aria-expanded', 'false');
+}
+
+function applyEmoji(emoji) {
+  closeEmojiPicker();
+  const node = doc.get(state.selectedId);
+  if (!node) return;
+  doc.setText(node.id, withEmoji(node.text, emoji || null));
+  refresh();
 }
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
@@ -1165,7 +1210,7 @@ function armScriptureTap(event) {
 // at a node behind the toolbar hits a toolbar button instead, which would
 // quietly format the node you had selected before.
 ui.wrap.addEventListener('pointermove', (event) => {
-  if (event.pointerType !== 'mouse' || ui.toolbar.hidden) return;
+  if (event.pointerType !== 'mouse' || ui.toolbar.hidden || !ui.emojiPicker.hidden) return;
   const rect = ui.toolbar.getBoundingClientRect();
   const dx = Math.max(rect.left - event.clientX, 0, event.clientX - rect.right);
   const dy = Math.max(rect.top - event.clientY, 0, event.clientY - rect.bottom);
@@ -1276,6 +1321,24 @@ document.addEventListener('keyup', (event) => {
 window.addEventListener('blur', () => setPanMode(false));
 
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !ui.emojiPicker.hidden) {
+    event.preventDefault();
+    closeEmojiPicker();
+    ui.canvas.focus();
+    return;
+  }
+  // Inside the picker the arrows move between emoji, and Enter and Space
+  // press the one in focus rather than reaching the map's shortcuts.
+  if (ui.emojiPicker.contains(event.target)) {
+    const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -10, ArrowDown: 10 }[event.key];
+    if (step) {
+      event.preventDefault();
+      const choices = [...ui.emojiPicker.querySelectorAll('[data-emoji]:not(:disabled)')];
+      const index = choices.indexOf(event.target);
+      choices[clamp(index + step, 0, choices.length - 1)]?.focus();
+    }
+    if (step || event.key === 'Enter' || event.key === ' ') return;
+  }
   const target = event.target;
   const typing = target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement ||
     target instanceof HTMLSelectElement;
@@ -1552,6 +1615,31 @@ function buildSwatches() {
   }
 }
 
+function buildEmojiPicker() {
+  for (const group of EMOJI_GROUPS) {
+    const row = document.createElement('div');
+    row.className = 'emoji-row';
+    row.setAttribute('role', 'group');
+    row.setAttribute('aria-label', group.name);
+    for (const emoji of group.emoji) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'emoji-choice';
+      button.dataset.emoji = emoji;
+      button.textContent = emoji;
+      button.setAttribute('aria-pressed', 'false');
+      row.append(button);
+    }
+    ui.emojiPicker.append(row);
+  }
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'tool emoji-remove';
+  remove.dataset.emoji = '';
+  remove.textContent = 'Remove emoji';
+  ui.emojiPicker.append(remove);
+}
+
 function applyHighlight(id) {
   if (!state.selectedId) return;
   const node = doc.get(state.selectedId);
@@ -1759,11 +1847,22 @@ function bindChrome() {
   });
   document.addEventListener('click', (event) => {
     if (!menu.contains(event.target)) closeMenu();
+    if (!ui.toolbar.contains(event.target)) closeEmojiPicker();
   });
 
   ui.toolbar.addEventListener('click', (event) => {
+    const pick = event.target.closest('[data-emoji]');
+    if (pick && state.selectedId) {
+      applyEmoji(pick.dataset.emoji);
+      return;
+    }
     const act = event.target.closest('[data-act]')?.dataset.act;
     if (!act || !state.selectedId) return;
+    if (act === 'emoji') {
+      if (ui.emojiPicker.hidden) openEmojiPicker();
+      else closeEmojiPicker();
+      return;
+    }
     // Adding a child or a sibling lives on the dots beside the card itself.
     if (act === 'delete') deleteSelected();
     else if (act === 'label') startLabelEdit();
@@ -1810,6 +1909,7 @@ function bindChrome() {
 function boot() {
   doc.onChange(markDirty);
   buildSwatches();
+  buildEmojiPicker();
   buildLinkOptions();
   buildSampleSelect();
   bindChrome();
@@ -1857,6 +1957,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 window.mindmapper = {
   doc,
   get layout() { return layout; },
+  get selectedId() { return state.selectedId; },
   get lastVerseLink() { return lastVerseLink; },
   set lastVerseLink(value) { lastVerseLink = value; },
   viewport,

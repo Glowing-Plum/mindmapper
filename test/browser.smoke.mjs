@@ -140,6 +140,31 @@ try {
   check('bold, italic and highlight apply', formatting.bold && formatting.italic && formatting.highlighted,
     JSON.stringify(formatting));
 
+  // Emoji: the picker adds one at the front, swaps it, and takes it off.
+  const buildText = () => page.evaluate((id) => window.mindmapper.doc.get(id).text, buildId);
+  await clickNode('Build');
+  await page.click('.node-toolbar [data-act="emoji"]');
+  check('the emoji button opens the picker', await page.isVisible('#emoji-picker'));
+  await page.click('#emoji-picker [data-emoji="⭐"]');
+  await page.waitForTimeout(200);
+  check('picking an emoji puts it at the front of the card', (await buildText()) === '⭐ Build', await buildText());
+  check('the picker closes after a pick', !(await page.isVisible('#emoji-picker')));
+  check('the emoji button shows the card\'s emoji',
+    (await page.textContent('.node-toolbar [data-act="emoji"]')) === '⭐');
+  await page.click('.node-toolbar [data-act="emoji"]');
+  await page.click('#emoji-picker [data-emoji="📖"]');
+  await page.waitForTimeout(200);
+  check('a second emoji replaces the first', (await buildText()) === '📖 Build', await buildText());
+  await page.click('.node-toolbar [data-act="emoji"]');
+  await page.keyboard.press('Escape');
+  check('Escape closes the picker and keeps the card selected',
+    !(await page.isVisible('#emoji-picker')) &&
+      (await page.evaluate(() => window.mindmapper.selectedId)) === buildId);
+  await page.click('.node-toolbar [data-act="emoji"]');
+  await page.click('#emoji-picker .emoji-remove');
+  await page.waitForTimeout(200);
+  check('Remove emoji takes it off again', (await buildText()) === 'Build', await buildText());
+
   // Labelling a connector.
   await clickNode('Pricing');
   await page.click('.node-toolbar [data-act="label"]');

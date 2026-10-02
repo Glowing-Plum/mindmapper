@@ -37,7 +37,7 @@ server on, host it — see [Putting it on the web](#putting-it-on-the-web).
 
 ```bash
 npm test               # 105 unit tests: parser, model, layout, scripture, timings, files
-npm run test:browser   # 102 end-to-end checks in Chromium (needs playwright)
+npm run test:browser   # 109 end-to-end checks in Chromium (needs playwright)
 ```
 
 ## Generating a map
@@ -115,6 +115,13 @@ it.
 The toolbar above a selected node carries **bold**, *italic*, a text highlight
 (four tints, click the active one again to clear it) and the branch colour —
 click the active swatch again to go back to inheriting from the branch.
+
+The smiley button opens an emoji picker: marks such as ⭐ ✅ 💡, topics such as
+📖 🙏 ❤️, and talk cues such as 🗣️ ⏱️ 1️⃣. The emoji goes at the front of the
+card's text, so it shows in the outline and every export too. A card wears one
+at a time: pick another to swap it, pick the same one again (or **Remove
+emoji**) to take it off. The arrow keys move around the picker and Escape
+closes it.
 
 Any connector can carry a label: select the node below it and press **Label
 line**, or double-click the line itself. The column shifts outward to make room,
@@ -305,7 +312,7 @@ storage — including the invariants that nodes never overlap, that siblings ali
 only with each other, that regenerating preserves formatting, and that a `.json`
 file round-trips everything an outline cannot carry.
 
-`npm run test:browser` boots the app in Chromium for **102 end-to-end checks**:
+`npm run test:browser` boots the app in Chromium for **109 end-to-end checks**:
 editing, dragging, formatting, line labels, collapsing, undo, version history,
 opening and saving files, drag-and-drop, talk mode, timings, the scripture
 index, the printable outline, space-to-pan, the node handles, the rehearsal

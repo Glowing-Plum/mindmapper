@@ -177,8 +177,11 @@
           <span class="divider"></span>
           <div class="swatches" id="swatches" role="group" aria-label="Branch colour"></div>
           <span class="divider"></span>
+          <button type="button" class="tool emoji-toggle" data-act="emoji" title="Add an emoji to the card"
+            aria-label="Emoji" aria-haspopup="true" aria-expanded="false" aria-controls="emoji-picker">&#128578;</button>
           <button type="button" class="tool" data-act="label" title="Label the line from the parent (Ctrl+L)">Label line</button>
           <button type="button" class="tool danger" data-act="delete" title="Delete (Del)" aria-label="Delete node">&#128465;</button>
+          <div class="emoji-picker" id="emoji-picker" role="group" aria-label="Choose an emoji" hidden></div>
         </div>
 
         <div class="zoom-controls">
