@@ -37,11 +37,12 @@ export function styleForDepth(depth) {
 /** Folds a node's own formatting into its depth style. */
 export function styleForNode(node, depth) {
   const base = styleForDepth(depth);
-  if (!node?.bold && !node?.italic) return base;
+  if (!node?.bold && !node?.italic && !node?.underline) return base;
   return {
     ...base,
     fontWeight: node.bold ? 700 : base.fontWeight,
     italic: Boolean(node.italic),
+    underline: Boolean(node.underline), // drawn, but takes no room
   };
 }
 

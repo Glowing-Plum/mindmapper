@@ -123,7 +123,7 @@ export function createRenderer(svg) {
   function renderText(text, box) {
     const { style } = box;
     const key = [
-      box.lines.join('\u0000'), box.w, box.h, style.fontSize, style.fontWeight, style.italic,
+      box.lines.join('\u0000'), box.w, box.h, style.fontSize, style.fontWeight, style.italic, style.underline,
       box.segments ? 'talk' : 'plain', box.meta ?? '',
     ].join('|');
     if (text.dataset.key === key) return;
@@ -131,6 +131,7 @@ export function createRenderer(svg) {
     text.style.fontSize = `${style.fontSize}px`;
     text.style.fontWeight = String(style.fontWeight);
     text.style.fontStyle = style.italic ? 'italic' : 'normal';
+    text.style.textDecoration = style.underline ? 'underline' : 'none';
     text.textContent = '';
     const top = (box.h - box.lines.length * box.lineHeight) / 2;
     box.lines.forEach((line, index) => {

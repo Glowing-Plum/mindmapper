@@ -8,6 +8,7 @@ import { createRenderer } from './render.js';
 import { createViewport } from './viewport.js';
 import { createInlineEditor } from './editor.js';
 import { BRANCH_COLORS, HIGHLIGHTS } from './palette.js';
+import { EMOJI_GROUPS, loadEmojiIndex, searchEmoji, splitEmoji, withEmoji } from './emoji.js';
 import { SAMPLES, DEFAULT_SAMPLE } from './samples.js';
 import {
   clearState, clearVersions, getVersion, listVersions, loadState, pushVersion, relativeTime, saveState,
@@ -33,6 +34,7 @@ const ui = {
   toolbar: el('node-toolbar'),
   swatches: el('swatches'),
   highlights: el('highlights'),
+  emojiPicker: el('emoji-picker'),
   toast: el('toast'),
   zoomLevel: el('btn-zoom-reset'),
   sampleSelect: el('sample-select'),
@@ -462,15 +464,20 @@ function positionToolbar() {
   const box = state.selectedId ? layout?.byId.get(state.selectedId) : null;
   if (!box || state.draggingId || editor?.isOpen()) {
     ui.toolbar.hidden = true;
+    closeEmojiPicker();
     return;
   }
+  if (ui.emojiPicker.dataset.for !== state.selectedId) closeEmojiPicker();
   const wrapRect = ui.wrap.getBoundingClientRect();
   const anchor = viewport.toScreen(box.cx, box.y);
   const halfWidth = ui.toolbar.offsetWidth / 2 || 180;
   const x = clamp(anchor.x - wrapRect.left, halfWidth + 8, wrapRect.width - halfWidth - 8);
   const y = anchor.y - wrapRect.top - 12;
   ui.toolbar.hidden = y < 50 || y > wrapRect.height;
-  if (ui.toolbar.hidden) return;
+  if (ui.toolbar.hidden) {
+    closeEmojiPicker();
+    return;
+  }
   ui.toolbar.classList.remove('is-away'); // a fresh selection always shows it
   ui.toolbar.style.left = `${x}px`;
   ui.toolbar.style.top = `${y}px`;
@@ -481,6 +488,7 @@ function syncToolbarState(node, box) {
   if (!node) return;
   ui.toolbar.querySelector('[data-act="bold"]').setAttribute('aria-pressed', String(Boolean(node.bold)));
   ui.toolbar.querySelector('[data-act="italic"]').setAttribute('aria-pressed', String(Boolean(node.italic)));
+  ui.toolbar.querySelector('[data-act="underline"]').setAttribute('aria-pressed', String(Boolean(node.underline)));
   for (const swatch of ui.highlights.children) {
     swatch.setAttribute('aria-pressed', String((swatch.dataset.highlight || null) === (node.highlight ?? null)));
   }
@@ -491,6 +499,50 @@ function syncToolbarState(node, box) {
   labelButton.disabled = box.isRoot;
   labelButton.textContent = node.edgeLabel ? 'Edit label' : 'Label line';
   ui.toolbar.querySelector('[data-act="delete"]').disabled = box.isRoot;
+  const { emoji } = splitEmoji(node.text);
+  ui.toolbar.querySelector('[data-act="emoji"]').textContent = emoji ?? '\u{1F642}';
+  for (const button of ui.emojiPicker.querySelectorAll('[data-emoji]')) {
+    if (button.dataset.emoji) button.setAttribute('aria-pressed', String(button.dataset.emoji === emoji));
+    else button.disabled = !emoji;
+  }
+}
+
+// ------------------------------------------------------------ emoji picker
+
+function openEmojiPicker() {
+  ui.emojiPicker.dataset.for = state.selectedId;
+  ui.emojiPicker.hidden = false;
+  ui.emojiPicker.classList.remove('is-above');
+  ui.toolbar.classList.remove('is-away');
+  ui.toolbar.querySelector('[data-act="emoji"]').setAttribute('aria-expanded', 'true');
+  // It opens below the toolbar, over the card; near the bottom of the map
+  // there is no room for that, so it opens above instead.
+  const wrapRect = ui.wrap.getBoundingClientRect();
+  if (ui.emojiPicker.getBoundingClientRect().bottom > wrapRect.bottom - 8) {
+    ui.emojiPicker.classList.add('is-above');
+  }
+  const search = ui.emojiPicker.querySelector('.emoji-search');
+  search.value = '';
+  showEmojiResults('');
+  loadEmojiIndex(); // have the full set ready by the time anything is typed
+  // With a mouse and keyboard, type straight away; on a touch screen focusing
+  // it would throw the on-screen keyboard up before anyone asked for it.
+  if (window.matchMedia('(pointer: fine)').matches) search.focus();
+}
+
+function closeEmojiPicker() {
+  if (ui.emojiPicker.hidden) return;
+  ui.emojiPicker.hidden = true;
+  delete ui.emojiPicker.dataset.for;
+  ui.toolbar.querySelector('[data-act="emoji"]').setAttribute('aria-expanded', 'false');
+}
+
+function applyEmoji(emoji) {
+  closeEmojiPicker();
+  const node = doc.get(state.selectedId);
+  if (!node) return;
+  doc.setText(node.id, withEmoji(node.text, emoji || null));
+  refresh();
 }
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
@@ -909,6 +961,7 @@ function nodeTarget(box) {
     fontSize: box.style.fontSize,
     fontWeight: box.style.fontWeight,
     italic: Boolean(box.style.italic),
+    underline: Boolean(box.style.underline),
     lineHeight: box.lineHeight,
     padX: box.style.padX,
     padY: (box.h - textHeight) / 2,
@@ -1020,6 +1073,7 @@ function handleEditorChord(key, target) {
   if (target.kind !== 'node') return;
   if (key === 'b') doc.toggleFormat(target.id, 'bold');
   else if (key === 'i') doc.toggleFormat(target.id, 'italic');
+  else if (key === 'u') doc.toggleFormat(target.id, 'underline');
   else if (key === 'h') cycleHighlight(target.id);
   refresh({ syncOutline: false });
 }
@@ -1165,7 +1219,7 @@ function armScriptureTap(event) {
 // at a node behind the toolbar hits a toolbar button instead, which would
 // quietly format the node you had selected before.
 ui.wrap.addEventListener('pointermove', (event) => {
-  if (event.pointerType !== 'mouse' || ui.toolbar.hidden) return;
+  if (event.pointerType !== 'mouse' || ui.toolbar.hidden || !ui.emojiPicker.hidden) return;
   const rect = ui.toolbar.getBoundingClientRect();
   const dx = Math.max(rect.left - event.clientX, 0, event.clientX - rect.right);
   const dy = Math.max(rect.top - event.clientY, 0, event.clientY - rect.bottom);
@@ -1276,6 +1330,38 @@ document.addEventListener('keyup', (event) => {
 window.addEventListener('blur', () => setPanMode(false));
 
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !ui.emojiPicker.hidden) {
+    event.preventDefault();
+    closeEmojiPicker();
+    ui.canvas.focus();
+    return;
+  }
+  // Inside the picker the arrows move between emoji, and Enter and Space
+  // press the one in focus rather than reaching the map's shortcuts.
+  if (ui.emojiPicker.contains(event.target)) {
+    const choices = [...ui.emojiPicker.querySelectorAll('[data-emoji]:not(:disabled)')]
+      .filter((choice) => choice.checkVisibility());
+    if (event.target.matches('.emoji-search')) {
+      if (event.isComposing) return;
+      if (event.key === 'ArrowDown' && choices.length) {
+        event.preventDefault();
+        choices[0].focus();
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        const first = ui.emojiPicker.querySelector('.emoji-results [data-emoji]');
+        if (first && !first.closest('[hidden]')) applyEmoji(first.dataset.emoji);
+      }
+      return; // everything else is typing
+    }
+    const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -10, ArrowDown: 10 }[event.key];
+    if (step) {
+      event.preventDefault();
+      const index = choices.indexOf(event.target);
+      if (index + step < 0) ui.emojiPicker.querySelector('.emoji-search').focus();
+      else choices[clamp(index + step, 0, choices.length - 1)]?.focus();
+    }
+    if (step || event.key === 'Enter' || event.key === ' ') return;
+  }
   const target = event.target;
   const typing = target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement ||
     target instanceof HTMLSelectElement;
@@ -1325,11 +1411,12 @@ document.addEventListener('keydown', (event) => {
   }
 
   // Formatting works on the selected node without opening the editor.
-  if (mod && state.selectedId && ['b', 'i', 'h', 'l'].includes(event.key.toLowerCase())) {
+  if (mod && state.selectedId && ['b', 'i', 'u', 'h', 'l'].includes(event.key.toLowerCase())) {
     event.preventDefault();
     const key = event.key.toLowerCase();
     if (key === 'b') doc.toggleFormat(state.selectedId, 'bold');
     else if (key === 'i') doc.toggleFormat(state.selectedId, 'italic');
+    else if (key === 'u') doc.toggleFormat(state.selectedId, 'underline');
     else if (key === 'h') cycleHighlight();
     else if (key === 'l') {
       startLabelEdit();
@@ -1552,6 +1639,72 @@ function buildSwatches() {
   }
 }
 
+function emojiButton(emoji, title) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'emoji-choice';
+  button.dataset.emoji = emoji;
+  button.textContent = emoji;
+  if (title) button.title = title;
+  button.setAttribute('aria-pressed', 'false');
+  return button;
+}
+
+function buildEmojiPicker() {
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.className = 'emoji-search';
+  search.placeholder = 'Search emoji · 이모지 검색';
+  search.setAttribute('aria-label', 'Search emoji');
+  search.autocomplete = 'off';
+  search.spellcheck = false;
+  search.enterKeyHint = 'done';
+  search.addEventListener('input', () => showEmojiResults(search.value));
+  const results = document.createElement('div');
+  results.className = 'emoji-results';
+  results.setAttribute('role', 'group');
+  results.setAttribute('aria-label', 'Search results');
+  results.hidden = true;
+  ui.emojiPicker.append(search, results);
+
+  for (const group of EMOJI_GROUPS) {
+    const row = document.createElement('div');
+    row.className = 'emoji-row';
+    row.setAttribute('role', 'group');
+    row.setAttribute('aria-label', group.name);
+    for (const emoji of group.emoji) row.append(emojiButton(emoji));
+    ui.emojiPicker.append(row);
+  }
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'tool emoji-remove';
+  remove.dataset.emoji = '';
+  remove.textContent = 'Remove emoji';
+  ui.emojiPicker.append(remove);
+}
+
+// Typing swaps the short list for matches from the whole Unicode set, which
+// loads the first time it's needed.
+async function showEmojiResults(query) {
+  const results = ui.emojiPicker.querySelector('.emoji-results');
+  const searching = query.trim() !== '';
+  results.hidden = !searching;
+  for (const row of ui.emojiPicker.querySelectorAll('.emoji-row')) row.hidden = searching;
+  if (!searching) return;
+  const index = await loadEmojiIndex();
+  if (ui.emojiPicker.querySelector('.emoji-search').value !== query) return; // typed on meanwhile
+  const found = searchEmoji(index, query);
+  results.replaceChildren(
+    ...found.map((entry) => emojiButton(entry.emoji, entry.koName ? `${entry.name} · ${entry.koName}` : entry.name)),
+  );
+  if (!found.length) {
+    const none = document.createElement('p');
+    none.className = 'emoji-none';
+    none.textContent = 'No emoji found';
+    results.append(none);
+  }
+}
+
 function applyHighlight(id) {
   if (!state.selectedId) return;
   const node = doc.get(state.selectedId);
@@ -1759,15 +1912,26 @@ function bindChrome() {
   });
   document.addEventListener('click', (event) => {
     if (!menu.contains(event.target)) closeMenu();
+    if (!ui.toolbar.contains(event.target)) closeEmojiPicker();
   });
 
   ui.toolbar.addEventListener('click', (event) => {
+    const pick = event.target.closest('[data-emoji]');
+    if (pick && state.selectedId) {
+      applyEmoji(pick.dataset.emoji);
+      return;
+    }
     const act = event.target.closest('[data-act]')?.dataset.act;
     if (!act || !state.selectedId) return;
+    if (act === 'emoji') {
+      if (ui.emojiPicker.hidden) openEmojiPicker();
+      else closeEmojiPicker();
+      return;
+    }
     // Adding a child or a sibling lives on the dots beside the card itself.
     if (act === 'delete') deleteSelected();
     else if (act === 'label') startLabelEdit();
-    else if (act === 'bold' || act === 'italic') {
+    else if (act === 'bold' || act === 'italic' || act === 'underline') {
       doc.toggleFormat(state.selectedId, act);
       refresh({ syncOutline: false });
     }
@@ -1810,6 +1974,7 @@ function bindChrome() {
 function boot() {
   doc.onChange(markDirty);
   buildSwatches();
+  buildEmojiPicker();
   buildLinkOptions();
   buildSampleSelect();
   bindChrome();
@@ -1857,6 +2022,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 window.mindmapper = {
   doc,
   get layout() { return layout; },
+  get selectedId() { return state.selectedId; },
   get lastVerseLink() { return lastVerseLink; },
   set lastVerseLink(value) { lastVerseLink = value; },
   viewport,

@@ -16,6 +16,7 @@ export function createNode(text = '', extra = {}) {
     colorIndex: null, // null => inherit from the branch
     bold: false,
     italic: false,
+    underline: false,
     highlight: null, // a HIGHLIGHTS id, or null
     edgeLabel: '', // text drawn on the line coming from this node's parent
     minutes: null, // how long this part of the talk should take
@@ -62,6 +63,7 @@ export function carryFormatting(fromRoot, toRoot) {
     if (source) {
       node.bold = source.bold;
       node.italic = source.italic;
+      node.underline = source.underline;
       node.highlight = source.highlight;
       node.edgeLabel = source.edgeLabel;
       node.minutes = source.minutes;
@@ -94,6 +96,7 @@ export class MindMapDoc {
         colorIndex: Number.isInteger(raw?.colorIndex) ? raw.colorIndex : null,
         bold: Boolean(raw?.bold),
         italic: Boolean(raw?.italic),
+        underline: Boolean(raw?.underline),
         highlight: raw?.highlight ?? null,
         edgeLabel: String(raw?.edgeLabel ?? ''),
         minutes: Number.isFinite(raw?.minutes) && raw.minutes > 0 ? raw.minutes : null,
@@ -110,6 +113,7 @@ export class MindMapDoc {
       colorIndex: node.colorIndex ?? undefined,
       bold: node.bold || undefined,
       italic: node.italic || undefined,
+      underline: node.underline || undefined,
       highlight: node.highlight ?? undefined,
       edgeLabel: node.edgeLabel || undefined,
       minutes: node.minutes ?? undefined,
@@ -265,10 +269,10 @@ export class MindMapDoc {
     return amend ? this.amend(apply) : this.transact(apply);
   }
 
-  /** Toggles bold or italic on a node. */
+  /** Toggles bold, italic or underline on a node. */
   toggleFormat(id, key) {
     const node = this.get(id);
-    if (!node || (key !== 'bold' && key !== 'italic')) return null;
+    if (!node || !['bold', 'italic', 'underline'].includes(key)) return null;
     return this.transact(() => {
       node[key] = !node[key];
       return node;

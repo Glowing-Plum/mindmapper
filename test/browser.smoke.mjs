@@ -124,6 +124,7 @@ try {
   await clickNode('Build');
   await page.click('.node-toolbar [data-act="bold"]');
   await page.keyboard.press('Control+i');
+  await page.click('.node-toolbar [data-act="underline"]');
   await page.click('#highlights .swatch[data-highlight="yellow"]');
   await page.waitForTimeout(300);
   const buildId = await idOf('Build');
@@ -134,11 +135,68 @@ try {
     return {
       bold: style.fontWeight === '700',
       italic: style.fontStyle === 'italic',
+      underline: style.textDecorationLine === 'underline',
       highlighted: highlight && highlight.style.display !== 'none',
     };
   }, buildId);
-  check('bold, italic and highlight apply', formatting.bold && formatting.italic && formatting.highlighted,
+  check('bold, italic, underline and highlight apply',
+    formatting.bold && formatting.italic && formatting.underline && formatting.highlighted,
     JSON.stringify(formatting));
+
+  // Emoji: the picker adds one at the front, swaps it, and takes it off.
+  const buildText = () => page.evaluate((id) => window.mindmapper.doc.get(id).text, buildId);
+  await clickNode('Build');
+  await page.click('.node-toolbar [data-act="emoji"]');
+  check('the emoji button opens the picker', await page.isVisible('#emoji-picker'));
+  await page.click('#emoji-picker [data-emoji="⭐"]');
+  await page.waitForTimeout(200);
+  check('picking an emoji puts it at the front of the card', (await buildText()) === '⭐ Build', await buildText());
+  check('the picker closes after a pick', !(await page.isVisible('#emoji-picker')));
+  check('the emoji button shows the card\'s emoji',
+    (await page.textContent('.node-toolbar [data-act="emoji"]')) === '⭐');
+  await page.click('.node-toolbar [data-act="emoji"]');
+  await page.click('#emoji-picker [data-emoji="📖"]');
+  await page.waitForTimeout(200);
+  check('a second emoji replaces the first', (await buildText()) === '📖 Build', await buildText());
+  await page.click('.node-toolbar [data-act="emoji"]');
+  await page.keyboard.press('Escape');
+  check('Escape closes the picker and keeps the card selected',
+    !(await page.isVisible('#emoji-picker')) &&
+      (await page.evaluate(() => window.mindmapper.selectedId)) === buildId);
+  await page.click('.node-toolbar [data-act="emoji"]');
+  await page.click('#emoji-picker .emoji-remove');
+  await page.waitForTimeout(200);
+  check('Remove emoji takes it off again', (await buildText()) === 'Build', await buildText());
+
+  // Any emoji at all, by typing: English, Korean, or the emoji itself.
+  const searchFor = async (query) => {
+    await page.click('.node-toolbar [data-act="emoji"]');
+    await page.fill('#emoji-picker .emoji-search', query);
+    await page.waitForFunction(() => document.querySelector('#emoji-picker .emoji-results [data-emoji], .emoji-none'));
+  };
+  await searchFor('giraffe');
+  check('typing in the picker searches every emoji', await page.isVisible('#emoji-picker .emoji-results [data-emoji="🦒"]'));
+  check('the short list steps aside while searching', !(await page.isVisible('#emoji-picker .emoji-row')));
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(200);
+  check('Enter picks the first match', (await buildText()) === '🦒 Build', await buildText());
+  await searchFor('성경');
+  await page.click('#emoji-picker .emoji-results [data-emoji="📖"]');
+  await page.waitForTimeout(200);
+  check('Korean words find emoji too', (await buildText()) === '📖 Build', await buildText());
+  await searchFor('🫶');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(200);
+  check('an emoji typed in is used as it is', (await buildText()) === '🫶 Build', await buildText());
+  await searchFor('zzzqqq');
+  check('a search with no match says so', await page.isVisible('#emoji-picker .emoji-none'));
+  await page.keyboard.press('Escape');
+  await page.click('.node-toolbar [data-act="emoji"]');
+  check('the search starts empty again', (await page.inputValue('#emoji-picker .emoji-search')) === '' &&
+    await page.isVisible('#emoji-picker .emoji-row'));
+  await page.click('#emoji-picker .emoji-remove');
+  await page.waitForTimeout(200);
+  check('the card is back to plain text', (await buildText()) === 'Build', await buildText());
 
   // Labelling a connector.
   await clickNode('Pricing');

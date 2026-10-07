@@ -4,7 +4,7 @@
 //
 // Bump VERSION when the shell changes: the old cache is dropped on activate.
 
-const VERSION = 'mindmapper-v1';
+const VERSION = 'mindmapper-v2';
 const SHELL = [
   './',
   'index.html',
@@ -16,6 +16,8 @@ const SHELL = [
   'icons/icon-maskable-512.png',
   'src/app.js',
   'src/editor.js',
+  'src/emoji.js',
+  'src/emoji-data.js',
   'src/exporters.js',
   'src/files.js',
   'src/layout.js',

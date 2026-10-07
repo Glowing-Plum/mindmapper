@@ -156,18 +156,20 @@ test('formatting and edge labels are stored and serialised', () => {
   const a = doc.root.children[0];
   doc.toggleFormat(a.id, 'bold');
   doc.toggleFormat(a.id, 'italic');
+  doc.toggleFormat(a.id, 'underline');
   doc.setHighlight(a.id, 'yellow');
   doc.setEdgeLabel(a.id, '  leads to  ');
   assert.equal(a.bold, true);
   assert.equal(a.italic, true);
+  assert.equal(a.underline, true);
   assert.equal(a.highlight, 'yellow');
   assert.equal(a.edgeLabel, 'leads to', 'labels are trimmed');
 
   const restored = MindMapDoc.fromJSON(JSON.parse(JSON.stringify(doc.toJSON())));
   const copy = restored.root.children[0];
   assert.deepEqual(
-    [copy.bold, copy.italic, copy.highlight, copy.edgeLabel],
-    [true, true, 'yellow', 'leads to'],
+    [copy.bold, copy.italic, copy.underline, copy.highlight, copy.edgeLabel],
+    [true, true, true, 'yellow', 'leads to'],
   );
 
   doc.toggleFormat(a.id, 'bold');
