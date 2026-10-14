@@ -208,6 +208,14 @@ function launchApp(url) {
  * this page is looked at again, an empty tab is closed and jw.org is kept.
  */
 function openInTab(url) {
+  // Chrome, Firefox and Edge on an iPad only hand the link to the app once the
+  // tab has opened, so it flashes up and away. There it is followed in this
+  // tab instead: the app takes it and the map stays put. Without the app,
+  // jw.org opens here, and Back returns to the map, which is autosaved.
+  if (isOtherIosBrowser()) {
+    launchApp(url);
+    return;
+  }
   const tab = window.open(url, '_blank');
   if (!tab) return;
   tab.opener = null; // what 'noopener' did, but keeping the handle to close it
@@ -234,6 +242,13 @@ function openInTab(url) {
   document.addEventListener('visibilitychange', tidy);
   window.addEventListener('focus', tidy);
   setTimeout(stop, 10 * 60 * 1000); // long gone by now; stop listening
+}
+
+/** Chrome, Firefox or Edge on an iPhone or iPad, rather than Safari. */
+function isOtherIosBrowser() {
+  // Chrome on iOS always injects __gCrWeb, even when it asks for desktop
+  // sites and its user agent says Mac.
+  return /CriOS|FxiOS|EdgiOS/.test(navigator.userAgent) || '__gCrWeb' in window;
 }
 
 function isHandingOff() {
