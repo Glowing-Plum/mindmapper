@@ -198,6 +198,44 @@ function launchApp(url) {
   link.remove();
 }
 
+/**
+ * Opens a verse in a new tab, and tidies the tab away if an app took it.
+ *
+ * The share link is a universal link: on an iPad with JW Library installed,
+ * iOS hands it to the app, but Safari has already opened the tab, which is
+ * left behind empty. That tab is still about:blank, which this page can read;
+ * one that went on to jw.org is another origin and cannot be read. So when
+ * this page is looked at again, an empty tab is closed and jw.org is kept.
+ */
+function openInTab(url) {
+  const tab = window.open(url, '_blank');
+  if (!tab) return;
+  tab.opener = null; // what 'noopener' did, but keeping the handle to close it
+
+  const isStillBlank = () => {
+    try {
+      return tab.location.href === 'about:blank';
+    } catch {
+      return false; // jw.org loaded: another origin, so keep it
+    }
+  };
+  const tidy = () => {
+    if (document.visibilityState !== 'visible') return;
+    stop();
+    // A moment's grace, in case jw.org is still on its way in.
+    setTimeout(() => {
+      if (!tab.closed && isStillBlank()) tab.close();
+    }, 600);
+  };
+  const stop = () => {
+    document.removeEventListener('visibilitychange', tidy);
+    window.removeEventListener('focus', tidy);
+  };
+  document.addEventListener('visibilitychange', tidy);
+  window.addEventListener('focus', tidy);
+  setTimeout(stop, 10 * 60 * 1000); // long gone by now; stop listening
+}
+
 function isHandingOff() {
   return Date.now() < handingOffUntil;
 }
@@ -238,7 +276,7 @@ function openReference(reference, { node = null, label = null } = {}) {
   }
 
   if (!verseActionIsApp()) {
-    window.open(url, '_blank', 'noopener');
+    openInTab(url);
     return;
   }
 
