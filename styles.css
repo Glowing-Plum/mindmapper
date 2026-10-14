@@ -468,6 +468,9 @@ select:focus-visible,
 
 .node-handle:hover .node-handle-dot { r: 6.5; }
 
+/* Talk mode locks the map, so there is nothing to branch off. */
+.is-talk-mode .node-handle { display: none; }
+
 .node-badge { cursor: pointer; }
 
 .node-badge-circle {
@@ -1257,6 +1260,3 @@ dialog menu { gap: 8px; align-items: center; justify-content: space-between; }
 .canvas-timer[hidden] { display: none; }
 .canvas-timer.is-over { color: var(--danger); border-color: var(--danger); }
 .canvas-timer.is-close { color: var(--warning); }
-
-
-}
