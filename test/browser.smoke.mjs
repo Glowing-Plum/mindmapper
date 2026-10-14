@@ -608,6 +608,35 @@ try {
     return node.note === 'Pause here.';
   }));
 
+  // Talk mode locks the map: no typing into cards, no deleting, no toolbar,
+  // and the outline cannot regenerate it. Minutes and notes, above, still work.
+  {
+    const before = await outline();
+    await page.evaluate(() => document.activeElement?.blur());
+    await clickNode('Grief is natural');
+    await page.waitForTimeout(150);
+    check('the node toolbar stays away in talk mode', await page.evaluate(() =>
+      document.getElementById('node-toolbar').hidden));
+    await page.keyboard.press('Delete');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('x');
+    await page.keyboard.press('Control+b');
+    await page.keyboard.press('Alt+ArrowDown');
+    await page.waitForTimeout(200);
+    const box = await page.locator('.node', { hasText: 'Grief is natural' }).boundingBox();
+    await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+    await page.waitForTimeout(200);
+    check('cards cannot be edited, added, deleted or moved in talk mode',
+      (await outline()) === before
+      && await page.evaluate(() => document.querySelector('.inline-editor').style.display === 'none'
+        && ![...window.mindmapper.doc.nodes.values()].find((n) => n.text === 'Grief is natural').bold),
+      await outline());
+    check('the outline is read-only in talk mode', await page.evaluate(() =>
+      document.getElementById('outline').readOnly && document.getElementById('btn-generate').disabled));
+    check('undo is off in talk mode', await page.evaluate(() =>
+      document.getElementById('btn-undo').disabled));
+  }
+
   // The rehearsal timer.
   await page.click('#btn-timer');
   await page.waitForTimeout(1600);
@@ -746,9 +775,8 @@ try {
       document.getElementById('node-toolbar').hidden = true;
     });
 
-    // A card that happens to start with a reference can still be dragged.
-    // This goes first, while nothing is selected: the floating toolbar of a
-    // selected card would otherwise sit over the card being aimed at.
+    // Dragging from a reference neither opens it nor -- since Talk mode locks
+    // the map -- moves the card.
     const outlineBefore = await pad.inputValue('#outline');
     let spot = await centre('시편');
     const target = await pad.evaluate(() => {
@@ -762,8 +790,8 @@ try {
     await pad.mouse.move(target.x, target.y, { steps: 12 });
     await pad.mouse.up();
     await pad.waitForTimeout(400);
-    check('dragging from a reference moves the card instead of opening it',
-      (await opened()) === null && (await pad.inputValue('#outline')) !== outlineBefore,
+    check('dragging from a reference neither opens it nor moves the locked card',
+      (await opened()) === null && (await pad.inputValue('#outline')) === outlineBefore,
       `opened ${await opened()}; outline ${JSON.stringify(await pad.inputValue('#outline'))}`);
 
     // A finger tap opens the verse.

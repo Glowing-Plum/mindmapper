@@ -133,8 +133,10 @@ function refresh({ syncOutline = true } = {}) {
 }
 
 function updateChrome() {
-  el('btn-undo').disabled = !doc.canUndo();
-  el('btn-redo').disabled = !doc.canRedo();
+  el('btn-undo').disabled = mapLocked() || !doc.canUndo();
+  el('btn-redo').disabled = mapLocked() || !doc.canRedo();
+  ui.outline.readOnly = mapLocked();
+  el('btn-generate').disabled = mapLocked();
   for (const button of document.querySelectorAll('.seg')) {
     button.setAttribute('aria-pressed', String(button.dataset.mode === state.mode));
   }
@@ -145,10 +147,27 @@ function updateChrome() {
 // -------------------------------------------------------------- talk mode
 
 function setTalkMode(on) {
+  if (on && editor.isOpen()) editor.close({ commit: true });
   state.talkMode = on;
   if (on) showPanel('talk');
   refresh({ syncOutline: false });
   scheduleSave();
+}
+
+/**
+ * Talk mode is for preparing and giving the talk, not for rewriting it: the
+ * map's cards, structure and formatting are locked. Minutes, notes and
+ * folding branches open or shut still work.
+ */
+function mapLocked() {
+  return state.talkMode;
+}
+
+/** True, with a hint, when the map should not be changed right now. */
+function refuseWhileLocked() {
+  if (!mapLocked()) return false;
+  showToast('The map is locked in Talk mode — Ctrl+T to edit it');
+  return true;
 }
 
 function showPanel(which) {
@@ -462,7 +481,7 @@ function syncScriptureSettings() {
 
 function positionToolbar() {
   const box = state.selectedId ? layout?.byId.get(state.selectedId) : null;
-  if (!box || state.draggingId || editor?.isOpen()) {
+  if (!box || state.draggingId || editor?.isOpen() || mapLocked()) {
     ui.toolbar.hidden = true;
     closeEmojiPicker();
     return;
@@ -540,7 +559,7 @@ function closeEmojiPicker() {
 function applyEmoji(emoji) {
   closeEmojiPicker();
   const node = doc.get(state.selectedId);
-  if (!node) return;
+  if (!node || refuseWhileLocked()) return;
   doc.setText(node.id, withEmoji(node.text, emoji || null));
   refresh();
 }
@@ -839,6 +858,7 @@ async function generateFromOutline({
   preserveFormatting = true,
   what = 'Map generated',
 } = {}) {
+  if (refuseWhileLocked()) return;
   const source = ui.outline.value;
   const existing = [...walk(doc.root)].length;
   if (!source.trim() && existing > 1) {
@@ -1002,6 +1022,7 @@ function labelTarget(edge) {
 }
 
 function startEdit(id, { selectAll = true, isNew = false } = {}) {
+  if (refuseWhileLocked()) return;
   const box = layout?.byId.get(id);
   if (!box) return;
   if (isNew) state.newNodeId = id;
@@ -1013,6 +1034,7 @@ function startEdit(id, { selectAll = true, isNew = false } = {}) {
 }
 
 function startLabelEdit(nodeId = state.selectedId) {
+  if (refuseWhileLocked()) return;
   const edge = layout?.edges.find((candidate) => candidate.to.id === nodeId);
   if (!edge) {
     showToast('The root has no incoming line to label');
@@ -1079,7 +1101,7 @@ function handleEditorChord(key, target) {
 }
 
 function addChild(parentId = state.selectedId) {
-  if (!parentId) return;
+  if (!parentId || refuseWhileLocked()) return;
   const node = doc.addChild(parentId, '');
   if (!node) return;
   state.selectedId = node.id;
@@ -1088,7 +1110,7 @@ function addChild(parentId = state.selectedId) {
 }
 
 function addSibling(id = state.selectedId) {
-  if (!id) return;
+  if (!id || refuseWhileLocked()) return;
   const node = doc.addSibling(id, '');
   if (!node) return;
   state.selectedId = node.id;
@@ -1097,7 +1119,7 @@ function addSibling(id = state.selectedId) {
 }
 
 function deleteSelected() {
-  if (!state.selectedId || state.selectedId === doc.root.id) return;
+  if (!state.selectedId || state.selectedId === doc.root.id || refuseWhileLocked()) return;
   const node = doc.get(state.selectedId);
   const size = node ? 1 + [...walk(node)].length - 1 : 1;
   const next = doc.remove(state.selectedId);
@@ -1240,6 +1262,7 @@ ui.canvas.addEventListener('dblclick', (event) => {
 
 function beginDrag(event, id) {
   if (id === doc.root.id) return; // the root anchors the map
+  if (mapLocked()) return; // a press still selects; it just never moves
   const origin = { x: event.clientX, y: event.clientY };
   let active = false;
   let dropped = null;
@@ -1367,6 +1390,12 @@ document.addEventListener('keydown', (event) => {
     target instanceof HTMLSelectElement;
   const mod = event.ctrlKey || event.metaKey;
 
+  // Undo would reach back past the lock into edits made before it, so in Talk
+  // mode Ctrl+Z belongs to whichever field is being typed in.
+  if (mod && ['z', 'y'].includes(event.key.toLowerCase()) && mapLocked()) {
+    if (!typing) event.preventDefault();
+    return;
+  }
   if (mod && event.key.toLowerCase() === 'z') {
     event.preventDefault();
     if (event.shiftKey) doc.redo();
@@ -1413,6 +1442,7 @@ document.addEventListener('keydown', (event) => {
   // Formatting works on the selected node without opening the editor.
   if (mod && state.selectedId && ['b', 'i', 'u', 'h', 'l'].includes(event.key.toLowerCase())) {
     event.preventDefault();
+    if (refuseWhileLocked()) return;
     const key = event.key.toLowerCase();
     if (key === 'b') doc.toggleFormat(state.selectedId, 'bold');
     else if (key === 'i') doc.toggleFormat(state.selectedId, 'italic');
@@ -1496,7 +1526,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 function restructure(direction) {
-  if (!state.selectedId) return;
+  if (!state.selectedId || refuseWhileLocked()) return;
   const box = layout.byId.get(state.selectedId);
   const towardParent = box?.side === -1 ? 'right' : 'left';
   if (direction === 'up') doc.reorder(state.selectedId, -1);
@@ -1610,7 +1640,7 @@ function buildSwatches() {
     swatch.title = `${color.name} branch (click again to inherit)`;
     swatch.setAttribute('aria-label', `${color.name} branch colour`);
     swatch.addEventListener('click', () => {
-      if (!state.selectedId) return;
+      if (!state.selectedId || refuseWhileLocked()) return;
       const node = doc.get(state.selectedId);
       doc.setColor(state.selectedId, node?.colorIndex === index ? null : index);
       refresh({ syncOutline: false });
@@ -1706,7 +1736,7 @@ async function showEmojiResults(query) {
 }
 
 function applyHighlight(id) {
-  if (!state.selectedId) return;
+  if (!state.selectedId || refuseWhileLocked()) return;
   const node = doc.get(state.selectedId);
   doc.setHighlight(state.selectedId, node?.highlight === id ? null : id);
   refresh({ syncOutline: false });

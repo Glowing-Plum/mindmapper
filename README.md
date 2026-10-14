@@ -173,6 +173,10 @@ a backup, version control — rather than inside one browser.
 ## Talk mode
 
 Turn it on with **Talk mode** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>T</kbd>).
+While it is on, the map itself is locked: cards cannot be typed into, added,
+deleted, dragged or formatted, the outline cannot regenerate it, and undo is
+off. Timings and speaker notes still save, and branches still fold open and
+shut. Turn Talk mode off to edit the map again.
 
 ![Talk mode: minutes on each part, a fit-to-slot bar, a rehearsal timer and an index of the scriptures used](docs/talk-mode.png)
 
